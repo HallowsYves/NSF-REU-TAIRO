@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# macOS
+.DS_Store
+
+# Editor / IDE
+.vscode/
+
+# Conda / virtual environments
+.env
+.venv
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# -------------------------------------------------------------------
+# Large / local-only result artifacts
+# All results/ sub-directories below are present on disk but not
+# committed — copy from the TAIRO source repo or regenerate locally.
+# -------------------------------------------------------------------
+
+# Trained model checkpoints and replay buffers (~4 GB)
+results/models/
+
+# Seed-fixed evaluation data (canonical episode CSVs)
+# Regenerate: python3 scripts/run_multiseed_sweep.py
+results/data_seedfix/
+
+# Original pre-fix classifier
+results/classifier/
+
+# Seed-fixed classifier artifacts (RF + causal + online + v4 calibration pkl)
+results/classifier_seedfix/
+
+# Dense-feature variant classifiers (1.4 GB+)
+results/classifier_seedfix_dense/
+
+# TensorBoard training logs
+results/tensorboard/
+results/tb_logs/
+
+# Video recordings
+results/videos/
+
+# Diagnostic plot subdirectories (regenerable from scripts/)
+results/figures/diag_*/
+
+# Recovery v4 step logs (large; episode_results + summary CSVs ARE committed)
+results/data_recovery_v4/step_logs*.csv
+results/data_recovery_v4_dense/step_logs*.csv
+
+# Pre-fix data archive — only CSVs gitignored; README.md in this dir IS committed
+results/archive/data_prefix_seedfix_2026-07-14/*.csv
+
+# Legacy data output directory (training logs land here when scripts run)
+results/data/
+
+# -------------------------------------------------------------------
+# Documents excluded from migration scope
+# -------------------------------------------------------------------
+c4_paper_changelog.md
+NSF_REU_2026_TAIRO_WEEK_7*.pdf

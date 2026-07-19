@@ -1,4 +1,4 @@
-# `reported_grasp`/`contact`: causal-proxy vs. hindsight-labeler disagreement — options for Dr. Ho / Jachin
+# reported_grasp / contact — Definitional Options
 
 **DECISION (2026-07-18): Option A adopted.** Keep the causal proxy as-is — no forward lift
 check, documented as an intentionally conservative online signal. Rationale: the disagreement

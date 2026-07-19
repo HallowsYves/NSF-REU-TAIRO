@@ -117,7 +117,7 @@ NSF-REU-TAIRO/
 ├── RECOVERY_V4.md               # CCAR design and implementation status
 ├── important_update_for_paper.md# Pre-submission paper update checklist
 ├── findings.md                  # Phase-by-phase failure-mode classifier findings (Phases 0–9)
-├── ATTACK_AWARE_TRACK.md        # Attack-aware policy track (ground-truth flag, Dr. Ho proposal)
+├── ATTACK_AWARE_TRACK.md        # Attack-aware policy track (ground-truth flag)
 └── update_paper.md              # Paper-writing guide with verified numbers and source citations
 ```
 

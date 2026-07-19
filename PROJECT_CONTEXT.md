@@ -8,7 +8,13 @@
 TAIRO-HX Phase 0/0.5 pre-implementation audit is complete; all open items it surfaced are resolved. Phase 0 (read-only migration audit) found WS1/WS3 intact and WS4 intact in code. Phase 0.5 closed the two remaining substantive items: (1) WS2 classifier metric mismatch — root cause confirmed as pre-seed-independence-fix duplicate-episode leakage inflating the old 0.996/0.779 figure; that intermediate dataset didn't survive migration and isn't recoverable. Current truth (0.9424 accuracy / 0.8159 macro-F1) is fully reproducible from `results/classifier_seedfix/` via fresh `.fit()`; CLAUDE.md and findings.md corrected accordingly. (2) `reported_grasp`/`contact` causal-vs-hindsight definitional gap — quantified (4.61% episode disagreement, 304/6,600, always one-directional/conservative, never a false-positive grasp claim) and closed via Decision: Option A, keep the causal proxy as-is; documented in-code (`causal_features.py`) and in `reported_grasp_contact_options.md`. The smoke-test-pruning question from Phase 0 was closed as informational-only (confirmed exploratory, not load-bearing). CLAUDE.md §10's stale claim about automatic seedfix classifier loading was also corrected this session. All work happened on `investigate/ws2-metric-and-grasp-def`, fast-forward merged into `main` (`b63c632..be19867`) and deleted; `main` is pushed and in sync with `origin/main` (`be19867`, verified via `git status`/`git rev-parse`). TAIRO-HX Phase 1 implementation has not started.
 
 ## Next Steps
-1. Flat vs. hierarchical classifier comparison (RF + XGBoost, baseline = 0.9424 / 0.8159).
+1. Flat vs. hierarchical classifier comparison (RF + XGBoost). Comparison point for this item
+   is now the **causal baseline**, not 0.9424/0.8159 — that post-hoc figure uses whole-episode
+   statistics (min/max/mean/slope over all 150 steps) that can't be computed mid-episode, so
+   it isn't a fair comparison for a causal/online hierarchical model. A causal flat-RF number
+   was attempted on `retrain/causal-flat-rf-baseline` (2026-07-19) but blocked on an open
+   design question — see Open Questions/Blockers below. 0.9424/0.8159 remains the correct
+   citation for the post-hoc/offline classifier specifically.
 2. Task-stage recognition + recoverability decision output.
 3. Trusted-goal storage.
 4. Gated single-family recovery with safe-stop.
@@ -16,6 +22,7 @@ TAIRO-HX Phase 0/0.5 pre-implementation audit is complete; all open items it sur
 ## Open Questions / Blockers
 - Two competing trustworthiness formulas (`metrics.py` weights vs. paper's Eq. 2) — still unresolved; the reconciliation script/audit trail didn't survive migration. Not touched in Phase 0.5.
 - Sparse-vs-dense online-classifier query cadence (Recovery v4 Phase C) — undecided; gates whether the `reported_grasp` Option B/C alternatives become worth revisiting.
+- **What "causal flat RF baseline" means, structurally, needs a decision before Phase 1 Item 1.** `causal_feature_matrix.csv` has 14 rows/episode (one per checkpoint_t, same hindsight label repeated) vs. `feature_matrix.csv`'s 1 row/episode — not a drop-in swap for the Phase 8 pipeline. The existing Phase 9B script (`train_causal_classifier.py`) pools all 14 checkpoints as independent rows and gets acc=0.948/macro-F1=0.839 (re-run 2026-07-19 with the corrected 0.9424/0.8159 baseline), but that's optimistic — correlated intra-episode rows plus late checkpoints (near-full episode info) pull the pooled number up (checkpoint-level accuracy ranges 0.917 at t=19 to 0.961 at t=149). Needs a decision: pool checkpoints (matches Phase 9B precedent) vs. fix a single early decision-point checkpoint (more honest "how early can this act" number) — see findings.md "Causal Flat RF Baseline — Retrain Prep" for full detail.
 
 ## Key Files & Environment
 - Repo: `/Users/yves/Documents/Github/NSF-REU-TAIRO` (conda env `reu_robotics`, Python 3.11, stable_baselines3 2.8.0). Use `/opt/miniconda3/envs/reu_robotics/bin/python3` directly — `conda run -n reu_robotics` silently falls back to system Python in this shell.

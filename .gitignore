@@ -25,6 +25,7 @@ PROJECT_CONTEXT.md
 results/classifier_flat_xgboost/
 results/level2_labels_clean_2M_scoped.csv
 results/level2_pfail_scores.csv
+results/level4_labels.csv
 
 # Jupyter checkpoints
 .ipynb_checkpoints/

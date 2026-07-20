@@ -292,6 +292,41 @@ CAUSAL_CHECKPOINT_START   = CAUSAL_WINDOW_SHORT - 1  # 19 — earliest step with
 CAUSAL_CHECKPOINT_STRIDE  = 10        # steps between inference checkpoints
 
 # ---------------------------------------------------------------------------
+# TAIRO-HX Level 4 (Attack Family) labeling — memo's 5-class scheme
+# (TAIRO-HX.md Section 3). Separate from ATTACK_CATEGORY_MAP above, which is
+# the attack-aware RL track's 4-class scheme (ATTACK_AWARE_TRACK.md) — do
+# not conflate or reuse. This mapping reshapes category boundaries (notably
+# object_pose_spoof moves from "sensor" to its own perception/state class)
+# specifically for the TAIRO-HX classifier pipeline, not RL-policy
+# observation conditioning. sensor_bias stays grouped with sensor_dropout/
+# contact_dropout under "sensor_info_loss" (conservative reading: bias is a
+# degraded/untrustworthy channel, not a fabricated value like pose-spoofing;
+# decided 2026-07-20).
+# ---------------------------------------------------------------------------
+ATTACK_FAMILIES = [
+    "action_actuation",
+    "perception_state",
+    "goal_manipulation",
+    "sensor_info_loss",
+    "unknown_attack",
+]
+ATTACK_FAMILY_DIM = len(ATTACK_FAMILIES)  # 5
+
+ATTACK_FAMILY_MAP = {
+    "clean":                     None,   # no Level 4 label — see build_level4_labels.py
+    "action_clipping":           "action_actuation",
+    "action_delay":              "action_actuation",
+    "action_reversal":           "action_actuation",
+    "grip_state_falsification":  "action_actuation",
+    "object_pose_spoof":         "perception_state",
+    "goal_spoof_immediate":      "goal_manipulation",
+    "goal_spoof_midep":          "goal_manipulation",
+    "sensor_dropout":            "sensor_info_loss",
+    "sensor_bias":               "sensor_info_loss",
+    "contact_dropout":           "sensor_info_loss",
+}
+
+# ---------------------------------------------------------------------------
 # Optional dependency flags
 # ---------------------------------------------------------------------------
 try:

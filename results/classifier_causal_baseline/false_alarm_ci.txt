@@ -1,0 +1,49 @@
+[boot] Loaded pooled_model.pkl (train_seeds=[0, 1, 2, 3], test_seed=4)
+[boot] Clean+success test rows: 420
+
+======================================================================
+SANITY CHECK — pooled false-alarm rate vs. prior session's number
+======================================================================
+  Pooled false-alarm rate: 0.3095  (reference: 0.3095, 130/420)
+
+======================================================================
+TASK 1 — PER-CHECKPOINT FALSE-ALARM RATE, 95% BOOTSTRAP CI (n_boot=5000)
+======================================================================
+
+checkpoint_t     n      rate              95% CI
+          19    30    0.7333  [0.5667, 0.8667]
+          29    30    0.7000  [0.5333, 0.8667]
+          39    30    0.7667  [0.6000, 0.9000]
+          49    30    0.7000  [0.5333, 0.8667]
+          59    30    0.7000  [0.5333, 0.8667]
+          69    30    0.0667  [0.0000, 0.1667]
+          79    30    0.0667  [0.0000, 0.1667]
+          89    30    0.0667  [0.0000, 0.1667]
+          99    30    0.0667  [0.0000, 0.1667]
+         109    30    0.0667  [0.0000, 0.1667]
+         119    30    0.1000  [0.0000, 0.2333]
+         129    30    0.1000  [0.0000, 0.2333]
+         139    30    0.1000  [0.0000, 0.2333]
+         149    30    0.1000  [0.0000, 0.2333]
+
+======================================================================
+TASK 2 — EARLY / MID / LATE BINNED FALSE-ALARM RATE, 95% BOOTSTRAP CI
+======================================================================
+
+  early (t=19-59)       n= 150  rate=0.7200  95% CI=[0.6467, 0.7933]
+  mid (t=69-109)        n= 150  rate=0.0667  95% CI=[0.0267, 0.1067]
+  late (t=119-149)      n= 120  rate=0.1000  95% CI=[0.0500, 0.1583]
+
+======================================================================
+TASK 3 — DOES THE CI SUPPORT THE 'STEEP EARLY-TO-MID DROP' CONCLUSION?
+======================================================================
+  Early bin CI: [0.6467, 0.7933]  (n=150)
+  Mid bin CI:   [0.0267, 0.1067]  (n=150)
+  Late bin CI:  [0.0500, 0.1583]  (n=120)
+
+  Early-vs-mid CIs DO NOT overlap (gap = 0.5400). The drop from early to mid is supported at the 95% bootstrap level, even accounting for the small per-bin sample sizes.
+  Mid-vs-late CIs overlap substantially — no strong evidence of a further drop/rise from mid to late; consistent with the plateau seen in the accuracy/macro-F1 curve over the same range.
+
+  NOTE (per-checkpoint, not per-bin): individual per-checkpoint CIs above are wide (n=30/checkpoint) — read those as indicative only. The binned CIs are the more defensible per-group numbers for citation.
+
+  This is evidence relevant to task-stage recognition (Phase 1 Item 2) and to the sparse-vs-dense query-cadence question, but does NOT settle either — no operating-point checkpoint or cadence decision is made here, per project norm.

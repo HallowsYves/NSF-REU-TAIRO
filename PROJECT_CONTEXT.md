@@ -13,11 +13,22 @@ TAIRO-HX Phase 0/0.5 pre-implementation audit is complete; all open items it sur
    XGBoost") — it requires the hierarchical classifier itself to exist. A flat-only baseline
    addition does not satisfy it. The fullest useful version, per memo Section 4, is four-way:
    flat RF vs. flat XGBoost vs. hierarchical RF vs. hierarchical XGBoost (baseline flat RF =
-   0.9424 / 0.8159). The flat XGBoost baseline work already done under the paused prompt
-   (`retrain/causal-flat-rf-baseline`, `results/classifier_causal_baseline/`) is still useful —
-   it's a valid component of the fuller four-way comparison — but does not by itself complete
-   Item 1. Hierarchical classifier build-out is separate, still-gated work (level-chaining
-   design question is open) and was NOT started in this correction pass.
+   0.9424 / 0.8159). The checkpoint-pooled causal Random Forest baseline already built under
+   the paused prompt (`retrain/causal-flat-rf-baseline`,
+   `results/classifier_causal_baseline/pooled_model.pkl`) is still useful as reference material
+   (detection-delay and false-alarm-rate characterization vs. episode checkpoint position:
+   accuracy 0.917→0.961, macro-F1 0.765→0.881 from t=19→149; false-alarm rate on clean+success
+   rows drops from ~72% early (t=19–59) to ~7% mid/late (t≥69), bootstrap-CI-confirmed
+   2026-07-20 — see `findings.md` "Causal Classifier — Detection-Delay Evaluation" and
+   `results/classifier_causal_baseline/detection_delay_curve.png`) — but it is **not** a flat
+   XGBoost baseline and **not** directly comparable to the 0.9424/0.8159 episode-level number:
+   it is a `RandomForestClassifier` (identical hyperparameters to Phase 8/9B) trained on
+   `causal_feature_matrix.csv` rows pooled across all 14 per-episode checkpoints (one row per
+   `(episode, checkpoint_t)`, pooled acc=0.9478/macro-F1=0.8386), not one row per episode. A
+   genuine flat XGBoost baseline, and a genuine episode-level causal-flat-RF baseline, are both
+   still-undone components of the four-way comparison memo Section 4 describes. Hierarchical
+   classifier build-out is separate, still-gated work (level-chaining design question is open)
+   and was NOT started in this correction pass.
 2. Task-stage recognition + recoverability decision output.
 3. Trusted-goal storage.
 4. Gated single-family recovery with safe-stop.
@@ -25,6 +36,8 @@ TAIRO-HX Phase 0/0.5 pre-implementation audit is complete; all open items it sur
 ## Open Questions / Blockers
 - Two competing trustworthiness formulas (`metrics.py` weights vs. paper's Eq. 2) — still unresolved; the reconciliation script/audit trail didn't survive migration. Not touched in Phase 0.5.
 - Sparse-vs-dense online-classifier query cadence (Recovery v4 Phase C) — undecided; gates whether the `reported_grasp` Option B/C alternatives become worth revisiting.
+- **Causal flat RF baseline — reference material for Item 1, not a comparison-point substitute (corrected 2026-07-20, see Next Steps item 1).** `causal_feature_matrix.csv` has 14 rows/episode (one per checkpoint_t, same hindsight label repeated); the project's existing pooling convention (Phase 9B `train_causal_classifier.py`, also used for the saved Phase C online classifier) trains/evaluates on all 14 checkpoints pooled. This pooled RF is checkpoint-level, not episode-level, so it characterizes detection-delay/false-alarm behavior usefully but does not substitute for the episode-level flat-vs-hierarchical comparison memo Section 4 calls for. Detection-delay characterization (2026-07-19, `retrain/causal-flat-rf-baseline`) confirms the pooled number is optimistic *early* in the episode specifically (t=19–59: acc 0.917→0.935, macro-F1 0.765→0.801; false-alarm rate on clean+success rows ~70–77%) and stabilizes from t≈69 onward (acc ~0.955–0.961, macro-F1 ~0.855–0.881, false-alarm rate ~7–10%). Remaining open question is narrower than before and not blocking Item 1: whether a live recovery trigger should query the model at every step (as trained) or wait past the ~t=69 inflection — that's an operating-point decision deliberately left unmade pending review, relevant to recovery-trigger design more than to the flat-vs-hierarchical comparison itself.
+- **False-alarm early→mid drop — now statistically confirmed (2026-07-20).** The steep drop noted above (n=420, ~30/checkpoint) was too sparse per-checkpoint to cite with confidence. Bootstrap CIs (95%, 5000 resamples) on the same data: per-checkpoint CIs are wide (n=30 each, e.g. t=19: 0.733 [0.567, 0.867]) but the early/mid/late-binned CIs are not — early (t=19–59, n=150): 0.720 [0.647, 0.793]; mid (t=69–109, n=150): 0.067 [0.027, 0.107]; late (t=119–149, n=120): 0.100 [0.050, 0.158]. Early-vs-mid CIs do not overlap (gap=0.540) — the drop is real, not noise. Mid-vs-late CIs overlap substantially — no evidence of further change after t≈69. This is the empirical basis cited for Phase 1 Item 2 (task-stage recognition); it is evidence only, not a cadence or operating-point decision (still open, see above). Script: `scripts/bootstrap_false_alarm_ci.py`. Output: `results/classifier_causal_baseline/false_alarm_ci.txt`.
 
 ## Key Files & Environment
 - Repo: `/Users/yves/Documents/Github/NSF-REU-TAIRO` (conda env `reu_robotics`, Python 3.11, stable_baselines3 2.8.0). Use `/opt/miniconda3/envs/reu_robotics/bin/python3` directly — `conda run -n reu_robotics` silently falls back to system Python in this shell.

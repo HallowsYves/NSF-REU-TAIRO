@@ -22,6 +22,10 @@ update_paper.md
 important_update_for_paper.md
 PROJECT_CONTEXT.md
 
+results/classifier_flat_xgboost/
+results/level2_labels_clean_2M_scoped.csv
+results/level2_pfail_scores.csv
+
 # Jupyter checkpoints
 .ipynb_checkpoints/
 
@@ -44,6 +48,10 @@ results/classifier/
 # Seed-fixed classifier artifacts (RF + causal + online + v4 calibration pkl)
 results/classifier_seedfix/
 
+# Causal flat-RF baseline model (113MB — exceeds GitHub's 100MB hard limit;
+# metrics/log/plot outputs in this dir ARE committed)
+results/classifier_causal_baseline/pooled_model.pkl
+
 # Dense-feature variant classifiers (1.4 GB+)
 results/classifier_seedfix_dense/
 
@@ -62,7 +70,7 @@ results/data_recovery_v4/step_logs*.csv
 results/data_recovery_v4_dense/step_logs*.csv
 
 # Pre-fix data archive — only CSVs gitignored; README.md in this dir IS committed
-results/archive/data_prefix_seedfix_2026-07-14/*.csv
+results/archive/data_prefix_seedfix_2026-07-14/**/*.csv
 
 # Legacy data output directory (training logs land here when scripts run)
 results/data/

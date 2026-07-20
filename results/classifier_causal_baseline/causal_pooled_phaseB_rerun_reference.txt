@@ -1,0 +1,154 @@
+AdroitHandRelocateDense-v1, AdroitHandHammerDense-v1, AdroitHandDoorDense-v1 environment's reward functions were updated in v1.2.1 without an environment version update. Therefore, use gymnasium-robotics==1.2.0 for v1 reproducibility or use v2 in gymnasium-robotics>=1.4.3. See https://github.com/Farama-Foundation/Gymnasium-Robotics/pull/220 for more details
+[phase9-B] Causal feature matrix: 92400 rows (1650 episode_idx values, not globally unique across models — same convention as Phase 8.5)
+[phase9-B] Features (42): ['t_norm', 'dto_now', 'dto_min_sofar', 'dto_mean_sofar', 'dto_slope_short', 'reached_ever_sofar', 'contact_streak_now', 'grasp_kinematic_ever_sofar', 'obj_z_now', 'obj_z_rise_short', 'separated_after_contact_now', 'dttg_now', 'dttg_min_sofar', 'dttg_max_sofar', 'dttg_range_short', 'dttg_slope_long', 'near_goal_frac_sofar', 'dtpg_now', 'goal_offset_now', 'goal_offset_max_sofar', 'goal_offset_mean_sofar', 'dtpg_min_sofar', 'anrm_now', 'anrm_mean_sofar', 'anrm_max_sofar', 'anrm_std_short', 'anrm_slope_short', 'action_ratio_mean_sofar', 'action_corrupted_frac_sofar', 'aper_now', 'aper_mean_sofar', 'aper_std_short', 'aper_min_sofar', 'aper_max_sofar', 'ovz_max_sofar', 'ovz_mean_short', 'safety_violation_rate_sofar', 'is_success_now', 'is_success_ever_sofar', 'n_success_steps_sofar', 'reward_sum_sofar', 'reward_mean_sofar']
+
+[phase9-B] Train: 73920 rows (seeds [0, 1, 2, 3])
+[phase9-B] Test:  18480 rows  (seed 4)
+
+======================================================================
+LEAKAGE CHECK
+======================================================================
+  episode_idx overlap between train/test: 0 (expect 0)
+  (episode_idx, checkpoint_t) row overlap: 0 (expect 0)
+
+======================================================================
+CLASS COUNTS PER SPLIT (row-level, i.e. per checkpoint, not per episode)
+======================================================================
+                          train   test  train_pct  test_pct
+failure_mode                                               
+success                    6202   1484       8.39      8.03
+never_reached_object      49630  12530      67.14     67.80
+reached_but_failed_grasp  11284   2884      15.27     15.61
+grasped_but_dropped        1484    280       2.01      1.52
+spoofed_goal               3332    798       4.51      4.32
+divergent_transport        1988    504       2.69      2.73
+
+======================================================================
+BASELINE — majority class (always predicts 'never_reached_object')
+======================================================================
+  Accuracy: 0.678
+  Macro F1: 0.135
+
+======================================================================
+RANDOM FOREST — CAUSAL FEATURES, POOLED ACROSS ALL CHECKPOINTS
+  (n_estimators=300, class_weight='balanced', seed=42 — same as Phase 8.5)
+======================================================================
+  Accuracy: 0.948   (baseline: 0.942, delta=+0.005)
+  Macro F1: 0.839   (baseline: 0.816, delta=+0.023)
+
+Per-class report:
+                          precision    recall  f1-score   support
+
+                 success      0.790     0.875     0.830      1484
+    never_reached_object      0.998     1.000     0.999     12530
+reached_but_failed_grasp      0.936     0.801     0.863      2884
+     grasped_but_dropped      0.634     0.693     0.662       280
+            spoofed_goal      0.782     0.947     0.857       798
+     divergent_transport      0.790     0.853     0.821       504
+
+                accuracy                          0.948     18480
+               macro avg      0.822     0.862     0.839     18480
+            weighted avg      0.951     0.948     0.948     18480
+
+Confusion matrix (rows=true, cols=pred):
+                P:success  P:never_reache  P:reached_but_  P:grasped_but_  P:spoofed_goal  P:divergent_tr
+T:success            1299               0              46               3             128               8
+T:never_reache          0           12526               4               0               0               0
+T:reached_but_        287              12            2310             104              73              98
+T:grasped_but_          2              11              60             194              10               3
+T:spoofed_goal         35               1               1               0             756               5
+T:divergent_tr         22               0              47               5               0             430
+
+======================================================================
+BALANCED ACCURACY + MACRO-F1 95% CI (bootstrap, n=2000 resamples)
+======================================================================
+  Balanced accuracy: 0.862
+  Macro-F1: 0.839  95% CI [0.828, 0.850]
+  NOTE: bootstrap resamples individual (episode_idx, checkpoint_t) rows, not whole episodes — rows from the same episode are correlated (14 checkpoints share one label), so this CI is narrower than a true episode-level CI. Treat as indicative, not exact.
+
+======================================================================
+FEATURE IMPORTANCES (causal model, top 20)
+======================================================================
+  dto_min_sofar                   0.1017  ██████████████████████████████
+  grasp_kinematic_ever_sofar      0.0787  ███████████████████████
+  reached_ever_sofar              0.0753  ██████████████████████
+  dtpg_now                        0.0540  ████████████████
+  dto_mean_sofar                  0.0503  ███████████████
+  dttg_now                        0.0423  ████████████
+  dto_now                         0.0410  ████████████
+  separated_after_contact_now     0.0349  ██████████
+  goal_offset_max_sofar           0.0349  ██████████
+  dtpg_min_sofar                  0.0328  █████████
+  goal_offset_mean_sofar          0.0296  ████████
+  contact_streak_now              0.0295  ████████
+  goal_offset_now                 0.0282  ████████
+  ovz_max_sofar                   0.0257  ███████
+  dttg_min_sofar                  0.0222  ██████
+  anrm_max_sofar                  0.0217  ██████
+  aper_min_sofar                  0.0203  ██████
+  is_success_now                  0.0200  ██████
+  reward_mean_sofar               0.0193  █████
+  aper_max_sofar                  0.0188  █████
+
+======================================================================
+ACCURACY / MACRO-F1 BY CHECKPOINT (how early can this classifier act?)
+======================================================================
+  t= 19  n= 1320  acc=0.917  macro-F1=0.765
+  t= 29  n= 1320  acc=0.928  macro-F1=0.783
+  t= 39  n= 1320  acc=0.932  macro-F1=0.795
+  t= 49  n= 1320  acc=0.934  macro-F1=0.806
+  t= 59  n= 1320  acc=0.935  macro-F1=0.801
+  t= 69  n= 1320  acc=0.955  macro-F1=0.856
+  t= 79  n= 1320  acc=0.958  macro-F1=0.866
+  t= 89  n= 1320  acc=0.956  macro-F1=0.856
+  t= 99  n= 1320  acc=0.957  macro-F1=0.861
+  t=109  n= 1320  acc=0.959  macro-F1=0.870
+  t=119  n= 1320  acc=0.958  macro-F1=0.869
+  t=129  n= 1320  acc=0.960  macro-F1=0.878
+  t=139  n= 1320  acc=0.958  macro-F1=0.870
+  t=149  n= 1320  acc=0.961  macro-F1=0.881
+
+======================================================================
+divergent_transport F1 BY CHECKPOINT
+======================================================================
+  t= 19  divergent_transport F1=0.761
+  t= 29  divergent_transport F1=0.737
+  t= 39  divergent_transport F1=0.785
+  t= 49  divergent_transport F1=0.785
+  t= 59  divergent_transport F1=0.785
+  t= 69  divergent_transport F1=0.833
+  t= 79  divergent_transport F1=0.838
+  t= 89  divergent_transport F1=0.838
+  t= 99  divergent_transport F1=0.827
+  t=109  divergent_transport F1=0.853
+  t=119  divergent_transport F1=0.877
+  t=129  divergent_transport F1=0.865
+  t=139  divergent_transport F1=0.849
+  t=149  divergent_transport F1=0.865
+
+======================================================================
+GENERALIZATION CHECK — trained on 9 conditions, tested on 2 held-out
+  Held-out: object_pose_spoof, sensor_bias  (same as Phase 8.5 check)
+======================================================================
+  Train: 75600 rows (9 conditions)
+  Test:  16800 rows  (['object_pose_spoof', 'sensor_bias'])
+  Accuracy: 0.895
+  Macro F1: 0.564
+
+Per-class report (held-out conditions only):
+                          precision    recall  f1-score   support
+
+                 success      0.517     0.758     0.615       462
+    never_reached_object      1.000     1.000     1.000     11648
+reached_but_failed_grasp      0.722     0.860     0.785      2716
+     grasped_but_dropped      0.482     0.746     0.585       350
+     divergent_transport      0.731     0.276     0.401      1624
+
+               micro avg      0.900     0.895     0.898     16800
+               macro avg      0.690     0.728     0.677     16800
+            weighted avg      0.905     0.895     0.888     16800
+
+  divergent_transport F1 (held-out conditions): 0.401
+  (Phase 8.5 post-hoc equivalent: 0.016 — merge fixed seed-split confusion, not the missing-condition generalization gap)
+
+[phase9-B] Done. No model saved (Phase B is evaluation-only).

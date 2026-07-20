@@ -27,6 +27,7 @@ results/level2_labels_clean_2M_scoped.csv
 results/level2_pfail_scores.csv
 results/level4_labels.csv
 results/level1_labels.csv
+results/hierarchical_chain_predictions.csv
 
 # Jupyter checkpoints
 .ipynb_checkpoints/

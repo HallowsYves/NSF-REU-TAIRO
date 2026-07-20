@@ -1,0 +1,10 @@
+,precision,recall,f1-score,support
+approaching_object,1.0,1.0,1.0,12526.0
+aligning_gripper,1.0,1.0,1.0,1426.0
+grasping,1.0,1.0,1.0,54.0
+transporting,1.0,1.0,1.0,983.0
+placing,1.0,1.0,1.0,958.0
+verifying_completion,1.0,1.0,1.0,2533.0
+accuracy,1.0,1.0,1.0,1.0
+macro avg,1.0,1.0,1.0,18480.0
+weighted avg,1.0,1.0,1.0,18480.0

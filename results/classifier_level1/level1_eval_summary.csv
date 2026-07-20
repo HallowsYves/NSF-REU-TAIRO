@@ -1,0 +1,2 @@
+n_rows_total,n_train,n_test,baseline_accuracy,baseline_macro_f1,accuracy,macro_f1,balanced_accuracy,macro_f1_ci_lo,macro_f1_ci_hi,gen_check_holdout,gen_check_accuracy,gen_check_macro_f1
+92400,73920,18480,0.6778138528138529,0.1346621084091251,1.0,1.0,1.0,1.0,1.0,object_pose_spoof,0.9997619047619047,0.9996003459200432

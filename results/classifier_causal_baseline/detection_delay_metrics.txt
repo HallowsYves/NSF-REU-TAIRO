@@ -1,0 +1,174 @@
+[train+save] Causal feature matrix: 92400 rows, 42 features
+[train+save] Train: 73920 rows (seeds [0, 1, 2, 3])
+[train+save] Test:  18480 rows  (seed 4)
+
+======================================================================
+TASK 1 — POOLED SANITY CHECK (all 14 checkpoints together)
+======================================================================
+  Accuracy:          0.9478   (reference: ~0.948)
+  Macro F1:          0.8386   (reference: ~0.839)
+  Balanced accuracy: 0.8616
+
+[train+save] Model saved -> results/classifier_causal_baseline/pooled_model.pkl
+
+======================================================================
+TASK 2 — PER-CHECKPOINT DETECTION-DELAY BREAKDOWN
+======================================================================
+
+--- checkpoint_t = 19  (n=1320)  accuracy=0.9174  macro-F1=0.7652 ---
+    success                      precision=0.7600  recall=0.7170  f1=0.7379  support=106
+    never_reached_object         precision=0.9878  recall=0.9955  f1=0.9917  support=895
+    reached_but_failed_grasp     precision=0.9006  recall=0.7476  f1=0.8170  support=206
+    grasped_but_dropped          precision=0.4839  recall=0.7500  f1=0.5882  support=20
+    spoofed_goal                 precision=0.5926  recall=0.8421  f1=0.6957  support=57
+    divergent_transport          precision=0.7714  recall=0.7500  f1=0.7606  support=36
+
+--- checkpoint_t = 29  (n=1320)  accuracy=0.9280  macro-F1=0.7829 ---
+    success                      precision=0.7525  recall=0.7170  f1=0.7343  support=106
+    never_reached_object         precision=0.9944  recall=1.0000  f1=0.9972  support=895
+    reached_but_failed_grasp     precision=0.9467  recall=0.7767  f1=0.8533  support=206
+    grasped_but_dropped          precision=0.5769  recall=0.7500  f1=0.6522  support=20
+    spoofed_goal                 precision=0.6071  recall=0.8947  f1=0.7234  support=57
+    divergent_transport          precision=0.7000  recall=0.7778  f1=0.7368  support=36
+
+--- checkpoint_t = 39  (n=1320)  accuracy=0.9318  macro-F1=0.7954 ---
+    success                      precision=0.7238  recall=0.7170  f1=0.7204  support=106
+    never_reached_object         precision=0.9967  recall=1.0000  f1=0.9983  support=895
+    reached_but_failed_grasp     precision=0.9532  recall=0.7913  f1=0.8647  support=206
+    grasped_but_dropped          precision=0.6842  recall=0.6500  f1=0.6667  support=20
+    spoofed_goal                 precision=0.6190  recall=0.9123  f1=0.7376  support=57
+    divergent_transport          precision=0.7209  recall=0.8611  f1=0.7848  support=36
+
+--- checkpoint_t = 49  (n=1320)  accuracy=0.9341  macro-F1=0.8056 ---
+    success                      precision=0.7358  recall=0.7358  f1=0.7358  support=106
+    never_reached_object         precision=0.9978  recall=1.0000  f1=0.9989  support=895
+    reached_but_failed_grasp     precision=0.9429  recall=0.8010  f1=0.8661  support=206
+    grasped_but_dropped          precision=0.7368  recall=0.7000  f1=0.7179  support=20
+    spoofed_goal                 precision=0.6250  recall=0.8772  f1=0.7299  support=57
+    divergent_transport          precision=0.7209  recall=0.8611  f1=0.7848  support=36
+
+--- checkpoint_t = 59  (n=1320)  accuracy=0.9348  macro-F1=0.8008 ---
+    success                      precision=0.7431  recall=0.7642  f1=0.7535  support=106
+    never_reached_object         precision=0.9978  recall=1.0000  f1=0.9989  support=895
+    reached_but_failed_grasp     precision=0.9480  recall=0.7961  f1=0.8654  support=206
+    grasped_but_dropped          precision=0.6842  recall=0.6500  f1=0.6667  support=20
+    spoofed_goal                 precision=0.6329  recall=0.8772  f1=0.7353  support=57
+    divergent_transport          precision=0.7209  recall=0.8611  f1=0.7848  support=36
+
+--- checkpoint_t = 69  (n=1320)  accuracy=0.9553  macro-F1=0.8557 ---
+    success                      precision=0.7891  recall=0.9528  f1=0.8632  support=106
+    never_reached_object         precision=0.9989  recall=1.0000  f1=0.9994  support=895
+    reached_but_failed_grasp     precision=0.9278  recall=0.8107  f1=0.8653  support=206
+    grasped_but_dropped          precision=0.6667  recall=0.6000  f1=0.6316  support=20
+    spoofed_goal                 precision=0.9032  recall=0.9825  f1=0.9412  support=57
+    divergent_transport          precision=0.8333  recall=0.8333  f1=0.8333  support=36
+
+--- checkpoint_t = 79  (n=1320)  accuracy=0.9583  macro-F1=0.8657 ---
+    success                      precision=0.8031  recall=0.9623  f1=0.8755  support=106
+    never_reached_object         precision=1.0000  recall=1.0000  f1=1.0000  support=895
+    reached_but_failed_grasp     precision=0.9385  recall=0.8155  f1=0.8727  support=206
+    grasped_but_dropped          precision=0.6842  recall=0.6500  f1=0.6667  support=20
+    spoofed_goal                 precision=0.9032  recall=0.9825  f1=0.9412  support=57
+    divergent_transport          precision=0.8158  recall=0.8611  f1=0.8378  support=36
+
+--- checkpoint_t = 89  (n=1320)  accuracy=0.9561  macro-F1=0.8565 ---
+    success                      precision=0.8095  recall=0.9623  f1=0.8793  support=106
+    never_reached_object         precision=1.0000  recall=1.0000  f1=1.0000  support=895
+    reached_but_failed_grasp     precision=0.9322  recall=0.8010  f1=0.8616  support=206
+    grasped_but_dropped          precision=0.5909  recall=0.6500  f1=0.6190  support=20
+    spoofed_goal                 precision=0.9032  recall=0.9825  f1=0.9412  support=57
+    divergent_transport          precision=0.8158  recall=0.8611  f1=0.8378  support=36
+
+--- checkpoint_t = 99  (n=1320)  accuracy=0.9568  macro-F1=0.8607 ---
+    success                      precision=0.8095  recall=0.9623  f1=0.8793  support=106
+    never_reached_object         precision=1.0000  recall=1.0000  f1=1.0000  support=895
+    reached_but_failed_grasp     precision=0.9429  recall=0.8010  f1=0.8661  support=206
+    grasped_but_dropped          precision=0.6087  recall=0.7000  f1=0.6512  support=20
+    spoofed_goal                 precision=0.9032  recall=0.9825  f1=0.9412  support=57
+    divergent_transport          precision=0.7949  recall=0.8611  f1=0.8267  support=36
+
+--- checkpoint_t = 109  (n=1320)  accuracy=0.9591  macro-F1=0.8697 ---
+    success                      precision=0.8226  recall=0.9623  f1=0.8870  support=106
+    never_reached_object         precision=1.0000  recall=1.0000  f1=1.0000  support=895
+    reached_but_failed_grasp     precision=0.9382  recall=0.8107  f1=0.8698  support=206
+    grasped_but_dropped          precision=0.6364  recall=0.7000  f1=0.6667  support=20
+    spoofed_goal                 precision=0.9032  recall=0.9825  f1=0.9412  support=57
+    divergent_transport          precision=0.8205  recall=0.8889  f1=0.8533  support=36
+
+--- checkpoint_t = 119  (n=1320)  accuracy=0.9583  macro-F1=0.8691 ---
+    success                      precision=0.8145  recall=0.9528  f1=0.8783  support=106
+    never_reached_object         precision=1.0000  recall=1.0000  f1=1.0000  support=895
+    reached_but_failed_grasp     precision=0.9330  recall=0.8107  f1=0.8675  support=206
+    grasped_but_dropped          precision=0.6087  recall=0.7000  f1=0.6512  support=20
+    spoofed_goal                 precision=0.9032  recall=0.9825  f1=0.9412  support=57
+    divergent_transport          precision=0.8649  recall=0.8889  f1=0.8767  support=36
+
+--- checkpoint_t = 129  (n=1320)  accuracy=0.9598  macro-F1=0.8782 ---
+    success                      precision=0.8130  recall=0.9434  f1=0.8734  support=106
+    never_reached_object         precision=1.0000  recall=1.0000  f1=1.0000  support=895
+    reached_but_failed_grasp     precision=0.9389  recall=0.8204  f1=0.8756  support=206
+    grasped_but_dropped          precision=0.6818  recall=0.7500  f1=0.7143  support=20
+    spoofed_goal                 precision=0.9032  recall=0.9825  f1=0.9412  support=57
+    divergent_transport          precision=0.8421  recall=0.8889  f1=0.8649  support=36
+
+--- checkpoint_t = 139  (n=1320)  accuracy=0.9583  macro-F1=0.8700 ---
+    success                      precision=0.8145  recall=0.9528  f1=0.8783  support=106
+    never_reached_object         precision=1.0000  recall=1.0000  f1=1.0000  support=895
+    reached_but_failed_grasp     precision=0.9282  recall=0.8155  f1=0.8682  support=206
+    grasped_but_dropped          precision=0.6667  recall=0.7000  f1=0.6829  support=20
+    spoofed_goal                 precision=0.9032  recall=0.9825  f1=0.9412  support=57
+    divergent_transport          precision=0.8378  recall=0.8611  f1=0.8493  support=36
+
+--- checkpoint_t = 149  (n=1320)  accuracy=0.9606  macro-F1=0.8809 ---
+    success                      precision=0.8279  recall=0.9528  f1=0.8860  support=106
+    never_reached_object         precision=1.0000  recall=1.0000  f1=1.0000  support=895
+    reached_but_failed_grasp     precision=0.9333  recall=0.8155  f1=0.8705  support=206
+    grasped_but_dropped          precision=0.6818  recall=0.7500  f1=0.7143  support=20
+    spoofed_goal                 precision=0.9048  recall=1.0000  f1=0.9500  support=57
+    divergent_transport          precision=0.8421  recall=0.8889  f1=0.8649  support=36
+
+Summary table (checkpoint_t, accuracy, macro_f1):
+ checkpoint_t  accuracy  macro_f1    n
+           19  0.917424  0.765157 1320
+           29  0.928030  0.782878 1320
+           39  0.931818  0.795415 1320
+           49  0.934091  0.805593 1320
+           59  0.934848  0.800763 1320
+           69  0.955303  0.855677 1320
+           79  0.958333  0.865657 1320
+           89  0.956061  0.856499 1320
+           99  0.956818  0.860743 1320
+          109  0.959091  0.869654 1320
+          119  0.958333  0.869141 1320
+          129  0.959848  0.878223 1320
+          139  0.958333  0.869983 1320
+          149  0.960606  0.880930 1320
+
+[sanity] t=19  acc=0.9174 macro-F1=0.7652  (reference: ~0.917/0.765)
+[sanity] t=149 acc=0.9606 macro-F1=0.8809  (reference: ~0.961/0.881)
+
+======================================================================
+TASK 4 — FALSE-ALARM RATE ON CLEAN EPISODES
+======================================================================
+Definition used: restricted to test rows where condition == 'clean' AND the hindsight episode label is 'success' (the genuinely nominal case — a clean episode that actually succeeded). False alarm = model predicts anything other than 'success' on such a row, i.e. flags a failure mode when nothing is wrong. Reported pooled and broken out by checkpoint_t, since a recovery trigger would query at every step, not just once per episode.
+
+[task4] Clean+success test rows: 420
+[task4] Pooled false-alarm rate: 0.3095  (130/420)
+
+By checkpoint_t:
+  t= 19  n=  30  false_alarm_rate=0.7333
+  t= 29  n=  30  false_alarm_rate=0.7000
+  t= 39  n=  30  false_alarm_rate=0.7667
+  t= 49  n=  30  false_alarm_rate=0.7000
+  t= 59  n=  30  false_alarm_rate=0.7000
+  t= 69  n=  30  false_alarm_rate=0.0667
+  t= 79  n=  30  false_alarm_rate=0.0667
+  t= 89  n=  30  false_alarm_rate=0.0667
+  t= 99  n=  30  false_alarm_rate=0.0667
+  t=109  n=  30  false_alarm_rate=0.0667
+  t=119  n=  30  false_alarm_rate=0.1000
+  t=129  n=  30  false_alarm_rate=0.1000
+  t=139  n=  30  false_alarm_rate=0.1000
+  t=149  n=  30  false_alarm_rate=0.1000
+
+[train+save] Metrics log saved -> results/classifier_causal_baseline/detection_delay_metrics.txt

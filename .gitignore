@@ -44,6 +44,10 @@ results/classifier/
 # Seed-fixed classifier artifacts (RF + causal + online + v4 calibration pkl)
 results/classifier_seedfix/
 
+# Causal flat-RF baseline model (113MB — exceeds GitHub's 100MB hard limit;
+# metrics/log/plot outputs in this dir ARE committed)
+results/classifier_causal_baseline/pooled_model.pkl
+
 # Dense-feature variant classifiers (1.4 GB+)
 results/classifier_seedfix_dense/
 

@@ -11,10 +11,16 @@ TAIRO-HX Phase 0/0.5 pre-implementation audit is complete; all open items it sur
 1. Flat vs. hierarchical classifier comparison (RF + XGBoost). Comparison point for this item
    is now the **causal baseline**, not 0.9424/0.8159 — that post-hoc figure uses whole-episode
    statistics (min/max/mean/slope over all 150 steps) that can't be computed mid-episode, so
-   it isn't a fair comparison for a causal/online hierarchical model. A causal flat-RF number
-   was attempted on `retrain/causal-flat-rf-baseline` (2026-07-19) but blocked on an open
-   design question — see Open Questions/Blockers below. 0.9424/0.8159 remains the correct
-   citation for the post-hoc/offline classifier specifically.
+   it isn't a fair comparison for a causal/online hierarchical model. The pooled causal RF
+   (`results/classifier_causal_baseline/pooled_model.pkl`, 2026-07-19) gets acc=0.9478/
+   macro-F1=0.8386 pooled across all 14 checkpoints, and its detection-delay curve is now
+   characterized (accuracy 0.917→0.961, macro-F1 0.765→0.881 from t=19→149, leveling off
+   around t=69 — see `findings.md` "Causal Classifier — Detection-Delay Evaluation" and
+   `results/classifier_causal_baseline/detection_delay_curve.png`). The flat-vs-hierarchical
+   comparison should use the **pooled model's numbers with the curve referenced** — not a
+   single cherry-picked checkpoint; no operating-point checkpoint has been selected, that's
+   still an open call. 0.9424/0.8159 remains the correct citation for the post-hoc/offline
+   classifier specifically.
 2. Task-stage recognition + recoverability decision output.
 3. Trusted-goal storage.
 4. Gated single-family recovery with safe-stop.
@@ -22,7 +28,7 @@ TAIRO-HX Phase 0/0.5 pre-implementation audit is complete; all open items it sur
 ## Open Questions / Blockers
 - Two competing trustworthiness formulas (`metrics.py` weights vs. paper's Eq. 2) — still unresolved; the reconciliation script/audit trail didn't survive migration. Not touched in Phase 0.5.
 - Sparse-vs-dense online-classifier query cadence (Recovery v4 Phase C) — undecided; gates whether the `reported_grasp` Option B/C alternatives become worth revisiting.
-- **What "causal flat RF baseline" means, structurally, needs a decision before Phase 1 Item 1.** `causal_feature_matrix.csv` has 14 rows/episode (one per checkpoint_t, same hindsight label repeated) vs. `feature_matrix.csv`'s 1 row/episode — not a drop-in swap for the Phase 8 pipeline. The existing Phase 9B script (`train_causal_classifier.py`) pools all 14 checkpoints as independent rows and gets acc=0.948/macro-F1=0.839 (re-run 2026-07-19 with the corrected 0.9424/0.8159 baseline), but that's optimistic — correlated intra-episode rows plus late checkpoints (near-full episode info) pull the pooled number up (checkpoint-level accuracy ranges 0.917 at t=19 to 0.961 at t=149). Needs a decision: pool checkpoints (matches Phase 9B precedent) vs. fix a single early decision-point checkpoint (more honest "how early can this act" number) — see findings.md "Causal Flat RF Baseline — Retrain Prep" for full detail.
+- **Causal flat RF baseline — resolved for Item 1 purposes, one narrower question left.** `causal_feature_matrix.csv` has 14 rows/episode (one per checkpoint_t, same hindsight label repeated); the project's existing pooling convention (Phase 9B `train_causal_classifier.py`, also used for the saved Phase C online classifier) trains/evaluates on all 14 checkpoints pooled, which is now the adopted comparison point for Item 1 (see Next Steps item 1). Detection-delay characterization (2026-07-19, `retrain/causal-flat-rf-baseline`) confirms the pooled number is optimistic *early* in the episode specifically (t=19–59: acc 0.917→0.935, macro-F1 0.765→0.801; false-alarm rate on clean+success rows ~70–77%) and stabilizes from t≈69 onward (acc ~0.955–0.961, macro-F1 ~0.855–0.881, false-alarm rate ~7–10%). Remaining open question is narrower than before and not blocking Item 1: whether a live recovery trigger should query the model at every step (as trained) or wait past the ~t=69 inflection — that's an operating-point decision deliberately left unmade pending review, relevant to recovery-trigger design more than to the flat-vs-hierarchical comparison itself.
 
 ## Key Files & Environment
 - Repo: `/Users/yves/Documents/Github/NSF-REU-TAIRO` (conda env `reu_robotics`, Python 3.11, stable_baselines3 2.8.0). Use `/opt/miniconda3/envs/reu_robotics/bin/python3` directly — `conda run -n reu_robotics` silently falls back to system Python in this shell.

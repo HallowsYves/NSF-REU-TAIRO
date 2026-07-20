@@ -327,6 +327,24 @@ ATTACK_FAMILY_MAP = {
 }
 
 # ---------------------------------------------------------------------------
+# TAIRO-HX Level 1 (Task Stage) labeling — memo's 6-stage ordered scheme
+# (TAIRO-HX.md Section 3). Deterministic, causal-only cascade — see
+# scripts/build_level1_labels.py. Approach->Align reuses REACH_THRESHOLD
+# (no new constant). Transport->Place is a NEW, PROVISIONAL boundary with no
+# prior precedent in this repo -- calibrate against the clean-episode
+# dttg-at-arrival distribution before treating as final (decided 2026-07-20).
+# ---------------------------------------------------------------------------
+LEVEL1_STAGES = [
+    "approaching_object",
+    "aligning_gripper",
+    "grasping",
+    "transporting",
+    "placing",
+    "verifying_completion",
+]
+LEVEL1_PLACE_RADIUS = 0.10  # m -- PROVISIONAL, see comment above
+
+# ---------------------------------------------------------------------------
 # Optional dependency flags
 # ---------------------------------------------------------------------------
 try:

@@ -1,0 +1,2 @@
+n_rows_total,n_rows_clean_excluded,n_rows_trained,n_train,n_test,baseline_accuracy,baseline_macro_f1,accuracy,macro_f1,balanced_accuracy,macro_f1_ci_lo,macro_f1_ci_hi,gen_check1_holdout,gen_check1_accuracy,gen_check1_macro_f1,gen_check2_holdout,gen_check2_perception_state_f1
+92400,8400,84000,67200,16800,0.4,0.14285714285714285,0.8483928571428572,0.808318246840741,0.7986483134920634,0.8014490456557626,0.8154505842653921,"action_delay,sensor_dropout",0.7583333333333333,0.41030177265653134,object_pose_spoof,0.0

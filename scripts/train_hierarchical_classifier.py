@@ -26,6 +26,7 @@ Output: results/classifier_hierarchical/hierarchical_eval_summary.csv
 """
 
 import os
+import pickle
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -233,4 +234,38 @@ print(f"  Hierarchical RF      (this script):                acc={rf_results['ac
 print(f"  Hierarchical XGBoost (this script):                acc={xgb_results['accuracy']:.4f}  "
       f"macro-F1={xgb_results['macro_f1']:.4f}")
 print(f"\n[hier-clf] Saved summary -> {os.path.join(OUT_DIR, 'hierarchical_eval_summary.csv')}")
-print("[hier-clf] Done. No model saved (no downstream consumer yet).")
+
+# ── Save both fitted models ─────────────────────────────────────────────────
+# Saving both (not just the XGBoost winner) since Item 1's comparison is
+# between all four legs -- either may be the one a future consumer wants to
+# reproduce or build on. A consumer must run build_hierarchical_chain.py
+# first to get level1/2/3 chained predictions for a new episode/seed, then
+# reconstruct CHAIN_FEATURE_COLS via onehot_upstream() before calling
+# predict() -- BASE_FEATURE_COLS alone are not sufficient, hence the schema
+# metadata saved alongside each model (same "no re-derivation, single
+# source of truth" precedent as get_class_probs in recovery_v4.py).
+_common_meta = {
+    "base_feature_cols": BASE_FEATURE_COLS,
+    "chain_feature_cols": CHAIN_FEATURE_COLS,
+    "label_order": ALL_LABELS,
+    "train_seeds": TRAIN_SEEDS,
+    "test_seed": TEST_SEED,
+    "final_checkpoint_t": FINAL_CHECKPOINT_T,
+    "upstream_schema": {
+        "level1_classes": config.LEVEL1_STAGES,
+        "level2_classes": LEVEL2_CLASSES,
+        "level3_classes": ALL_LABELS,
+    },
+    "requires": "results/hierarchical_chain_predictions.csv (build_hierarchical_chain.py) "
+                "for level1/2/3 chained predictions on new rows -- this model consumes "
+                "chain-conditioned features, not base causal features alone.",
+}
+
+for name, model, results in [("rf", rf, rf_results), ("xgboost", xgb, xgb_results)]:
+    out = {"model": model, "eval": results, **_common_meta}
+    pkl_path = os.path.join(OUT_DIR, f"hierarchical_classifier_{name}.pkl")
+    with open(pkl_path, "wb") as f:
+        pickle.dump(out, f)
+    print(f"[hier-clf] Saved -> {pkl_path}")
+
+print("[hier-clf] Done.")

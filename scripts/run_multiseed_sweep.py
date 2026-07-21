@@ -69,10 +69,12 @@ from config import (
 from evaluation.episode_runner import run_episode
 
 _RECOVERY_VERSION = {
-    "sac_her":             "none",
-    "sac_her_recovery_v2": "v2",
-    "sac_her_recovery_v3": "v3",
-    "sac_her_recovery_v4": "v4",
+    "sac_her":                 "none",
+    "sac_her_recovery_v2":     "v2",
+    "sac_her_recovery_v3":     "v3",
+    "sac_her_recovery_v4":     "v4",
+    "sac_her_recovery_v4_hx":  "v4_hx",
+    "sac_her_recovery_v4_hx2": "v4_hx2",
 }
 
 
@@ -81,8 +83,8 @@ def _layer(method: str, condition: str) -> str:
         return "B0" if condition == "clean" else "B1"
     if method == "sac_her_recovery_v2":
         return "B2"
-    if method == "sac_her_recovery_v4":
-        return "B4"
+    if method in {"sac_her_recovery_v4", "sac_her_recovery_v4_hx", "sac_her_recovery_v4_hx2"}:
+        return "B4"  # v4_hx/v4_hx2 are same-layer variants of v4, not new benchmark tiers
     return "B3"  # sac_her_recovery_v3
 
 
@@ -131,6 +133,21 @@ def _parse_args():
         ),
     )
     parser.add_argument(
+        "--conditions",
+        type=str,
+        nargs="+",
+        default=None,
+        metavar="CONDITION",
+        choices=ALL_CONDITIONS,
+        help=(
+            "Conditions to evaluate (space-separated). Default: all "
+            "ALL_CONDITIONS from config.py. Added for targeted statistical- "
+            "power re-runs (e.g. re-running only 2-3 conditions with more "
+            "seeds) without paying the full 11-condition grid's runtime. "
+            "Example: --conditions grip_state_falsification action_delay"
+        ),
+    )
+    parser.add_argument(
         "--n-episodes",
         type=int,
         default=None,
@@ -147,17 +164,23 @@ def _parse_args():
         nargs="+",
         default=None,
         metavar="METHOD",
-        choices=["sac_her", "sac_her_recovery_v2", "sac_her_recovery_v3", "sac_her_recovery_v4"],
+        choices=["sac_her", "sac_her_recovery_v2", "sac_her_recovery_v3",
+                 "sac_her_recovery_v4", "sac_her_recovery_v4_hx", "sac_her_recovery_v4_hx2"],
         help=(
             "Methods to evaluate (space-separated). "
             "Default: DEFAULT_METHODS from config.py (sac_her, "
-            "recovery_v2, recovery_v3 -- excludes sac_her_recovery_v4 so "
-            "the bare command stays reproducible). Pass "
-            "--methods sac_her_recovery_v4 explicitly to opt in; it "
-            "requires results/classifier_seedfix/online_failure_classifier.pkl "
-            "and recovery_v4_trigger_calibration.pkl to exist and is only "
+            "recovery_v2, recovery_v3 -- excludes all sac_her_recovery_v4* "
+            "variants so the bare command stays reproducible). "
+            "Pass --methods sac_her_recovery_v4 (or _hx / _hx2) explicitly to "
+            "opt in; all three require results/classifier_seedfix/online_failure_classifier.pkl "
+            "and recovery_v4_trigger_calibration.pkl to exist and are only "
             "calibrated for the clean_2M PickAndPlace checkpoint "
-            "(--recovery-v4-checkpoint). Example: --methods sac_her"
+            "(--recovery-v4-checkpoint). sac_her_recovery_v4_hx additionally "
+            "gates recovery_v4's expert mixture by an online Level-1 task-stage "
+            "signal (see recovery/recovery_v4_hx.py); sac_her_recovery_v4_hx2 "
+            "layers a Level-4 attack-family down-weight on top of that and "
+            "additionally requires results/classifier_level4/level4_classifier.pkl "
+            "(see recovery/recovery_v4_hx2.py). Example: --methods sac_her"
         ),
     )
     parser.add_argument(
@@ -260,6 +283,7 @@ def main() -> None:
     seeds       = args.seeds      if args.seeds      is not None else RANDOM_SEEDS
     n_episodes  = args.n_episodes if args.n_episodes is not None else N_EPISODES_PER_SEED
     methods     = args.methods    if args.methods    is not None else DEFAULT_METHODS
+    conditions  = args.conditions if args.conditions is not None else ALL_CONDITIONS
     output_dir  = args.output_dir if args.output_dir is not None else DATA_DIR
 
     os.makedirs(output_dir, exist_ok=True)
@@ -273,7 +297,7 @@ def main() -> None:
         from stable_baselines3 import SAC
         print(f"[sweep] env={env_tag}  max_steps={max_steps}  model={model_path}")
         print(f"[sweep] seeds={seeds}  n_episodes={n_episodes}  "
-              f"conditions={len(ALL_CONDITIONS)}  methods={len(methods)}")
+              f"conditions={len(conditions)}  methods={len(methods)}")
         model = SAC.load(model_path, env=_tmp_env)
     else:
         print("[sweep] WARNING: SB3 not available — sac_her runs will be skipped.")
@@ -287,7 +311,9 @@ def main() -> None:
     # ------------------------------------------------------------------
     recovery_v4_classifier = None
     recovery_v4_calibration = None
-    if "sac_her_recovery_v4" in methods:
+    level4_classifier = None
+    if any(m in methods for m in
+           ("sac_her_recovery_v4", "sac_her_recovery_v4_hx", "sac_her_recovery_v4_hx2")):
         import pickle
         from config import CLASSIFIER_DIR as _DEFAULT_CLASSIFIER_DIR
         v4_classifier_dir = (
@@ -319,6 +345,12 @@ def main() -> None:
                 f"(available: {list(recovery_v4_calibration.keys())})"
             )
 
+    if "sac_her_recovery_v4_hx2" in methods:
+        level4_path = "results/classifier_level4/level4_classifier.pkl"
+        print(f"[sweep] Loading Level 4 classifier artifact:\n        {level4_path}")
+        with open(level4_path, "rb") as f:
+            level4_classifier = pickle.load(f)
+
     episode_rows = []
     step_rows    = []
     episode_idx  = 0
@@ -330,7 +362,7 @@ def main() -> None:
         env = make_env(seed=seed)
         print(f"\n[sweep] seed={seed}")
 
-        for condition in ALL_CONDITIONS:
+        for condition in conditions:
             attack_level = ATTACK_LEVELS[condition]
 
             for method in methods:
@@ -354,6 +386,7 @@ def main() -> None:
                         recovery_v4_classifier=recovery_v4_classifier,
                         recovery_v4_calibration=recovery_v4_calibration,
                         recovery_v4_checkpoint=args.recovery_v4_checkpoint,
+                        level4_classifier=level4_classifier,
                     )
 
                     row = vars(result).copy()
@@ -388,11 +421,15 @@ def main() -> None:
     print(f"        {ep_path}")
     print(f"        {step_path}")
 
-    # Quick condition-coverage summary so the caller can verify all 11 ran.
-    print("\n[sweep] Condition coverage (sac_her only):")
-    sac_df = episode_df[episode_df["method"] == "sac_her"]
-    for cond in ALL_CONDITIONS:
-        n = int((sac_df["condition"] == cond).sum())
+    # Quick condition-coverage summary so the caller can verify the requested
+    # conditions ran. Uses the first requested method as the coverage probe
+    # (was hardcoded to "sac_her", which isn't always in `methods` -- e.g.
+    # targeted power re-runs that only evaluate recovery variants).
+    _probe_method = methods[0]
+    print(f"\n[sweep] Condition coverage ({_probe_method} only):")
+    probe_df = episode_df[episode_df["method"] == _probe_method]
+    for cond in conditions:
+        n = int((probe_df["condition"] == cond).sum())
         print(f"        {cond:<30}  {n:>3} episodes")
 
 

@@ -84,6 +84,8 @@ ALL_METHODS = [
     "sac_her_recovery_v2",
     "sac_her_recovery_v3",
     "sac_her_recovery_v4",
+    "sac_her_recovery_v4_hx",
+    "sac_her_recovery_v4_hx2",
 ]
 
 DEFAULT_METHODS = [
@@ -343,6 +345,83 @@ LEVEL1_STAGES = [
     "verifying_completion",
 ]
 LEVEL1_PLACE_RADIUS = 0.10  # m -- PROVISIONAL, see comment above
+
+# ---------------------------------------------------------------------------
+# TAIRO-HX Level 5 (Recovery Decision) — memo's 7-decision scheme
+# (TAIRO-HX.md Section 3, "Level 5: Recoverability"). Rule-based decision
+# logic over Levels 2-4's CHAINED PREDICTIONS (not ground truth, not Level
+# 1 — see CLAUDE.md "Level-Chaining Architecture"), not a learned
+# classifier. See scripts/build_level5_labels.py.
+# ---------------------------------------------------------------------------
+LEVEL5_DECISIONS = [
+    "continue_sac_her",
+    "compensate_for_problem",
+    "reconstruct_state",
+    "retry_task_stage",
+    "restore_trusted_goal",
+    "continue_reduced_speed",
+    "stop_safely",
+]
+# Both PROVISIONAL, uncalibrated — proxies for the memo's safe-stop triggers
+# (TAIRO-HX.md's untitled section between "Classifier algorithms" and
+# "Improved recovery families"). "Loss of both vision and contact" has no
+# implementable analog in this sim (no camera/perception channel exists —
+# see RECOVERY_V4.md section 2.5's oracle-privilege discussion); folded into
+# the low-confidence proxy below rather than invented.
+LEVEL5_LOW_CONFIDENCE_THRESH = 0.4   # level3_confidence / level4_confidence
+LEVEL5_ABNORMAL_STREAK_THRESH = 2    # consecutive prior abnormal checkpoints
+
+# ---------------------------------------------------------------------------
+# Recovery v4-HX: stage-gated expert mixture (mentor-directed, 2026-07-20).
+# Multiplies recovery_v4.py's existing per-expert class-probability weights
+# by a Level-1-task-stage compatibility mask before mixing -- the one signal
+# (Level 1) recovery_v4.py's CCAR never used at all. See
+# recovery/recovery_v4_hx.py. Confirmed via sign-off: SOFT gating (down-weight
+# by STAGE_EXPERT_SOFT_WEIGHT, not hard-zero) for stages an expert's own
+# docstring precondition doesn't cover -- Level 1's own cross-tab shows a
+# small (~5.7% of episodes) stage-ordinal regression rate, so a hard zero
+# would risk fully silencing a genuinely-needed expert on a Level-1 misfire.
+# Keyed by the same EXPERTS dict keys in recovery_v4.py (failure_mode label
+# names, not task stages). PROVISIONAL / uncalibrated, same status as
+# LEVEL1_PLACE_RADIUS and the Level 5 thresholds above.
+STAGE_EXPERT_SOFT_WEIGHT = 0.15
+
+STAGE_EXPERT_COMPAT = {
+    # never_reached_object -> approach_expert: navigates toward the object,
+    # pointless once contact/grasp is already underway.
+    "never_reached_object": {"approaching_object", "aligning_gripper"},
+    # reached_but_failed_grasp -> grasp_stabilize_expert: includes
+    # "transporting" deliberately -- matches the already-documented
+    # causal-proxy tradeoff (CLAUDE.md "Level 1 (Task Stage) Labeling":
+    # 30% of reached_but_failed_grasp episodes reach transporting+, kept
+    # as-is, Option A) rather than re-litigating that resolved decision.
+    "reached_but_failed_grasp": {"aligning_gripper", "grasping", "transporting"},
+    # divergent_transport -> transport_expert: its own docstring assumes
+    # "the object is already grasped."
+    "divergent_transport": {"transporting", "placing", "verifying_completion"},
+    # grasped_but_dropped -> regrasp_expert: retreat-and-reapproach only
+    # makes sense after a drop, which requires a prior grasp.
+    "grasped_but_dropped": {"grasping", "transporting", "placing"},
+    # spoofed_goal -> relocalization_expert: goal/object-pose corruption is
+    # not stage-bound (active from step 0 for goal_spoof_immediate, or
+    # injected mid-episode for goal_spoof_midep) -- all 6 stages eligible,
+    # i.e. this expert is never soft-gated.
+    "spoofed_goal": set(LEVEL1_STAGES),
+}
+
+# ---------------------------------------------------------------------------
+# Recovery v4-HX2: Level 4 (attack family) down-weighting, layered on top of
+# v4-HX's Level 1 stage gating (mentor-directed, 2026-07-20; see
+# recovery/recovery_v4_hx2.py). RECOVERY_V4.md section 2.5 already argues
+# action-channel attacks (action_clipping/delay/reversal,
+# grip_state_falsification -- config.ATTACK_FAMILY_MAP's "action_actuation"
+# family) need secure actuation / command authentication, not better state
+# estimation -- so a confident action_actuation prediction down-weights the
+# final blend weight rather than trusting the recovery experts more.
+# PROVISIONAL / uncalibrated, same status as the Level 5 / stage-gating
+# constants above.
+LEVEL4_ACTION_ACTUATION_DOWNWEIGHT = 0.3   # multiplier on final blend weight w
+LEVEL4_CONFIDENT_THRESH = 0.5              # min level4 max-class-prob to apply it
 
 # ---------------------------------------------------------------------------
 # Optional dependency flags

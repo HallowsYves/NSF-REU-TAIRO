@@ -29,6 +29,7 @@ Output: results/classifier_level4/level4_eval_summary.csv
 
 import argparse
 import os
+import pickle
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -271,4 +272,24 @@ summary = pd.DataFrame([{
 summary.to_csv(os.path.join(OUT_DIR, "level4_eval_summary.csv"), index=False)
 print(f"[level4-clf] Saved summary -> {os.path.join(OUT_DIR, 'level4_eval_summary.csv')}")
 print(f"[level4-clf] Saved per-class report -> {os.path.join(OUT_DIR, 'level4_per_class_report.csv')}")
-print("\n[level4-clf] Done. No model saved (no downstream consumer yet).")
+
+# ── Save model (downstream consumer now exists: recovery/recovery_v4_hx2.py,
+# 2026-07-20, mentor-directed recovery integration) ──────────────────────
+# n_jobs=1 for online single-row serving -- same measured rationale as
+# scripts/build_online_classifier.py (thread-pool dispatch overhead per
+# call dominates at n_jobs=-1 for single-row predict()).
+rf.n_jobs = 1
+out = {
+    "model": rf,
+    "feature_cols": FEATURE_COLS,
+    "label_order": TRAINED_FAMILIES,
+    "train_seeds": TRAIN_SEEDS,
+    "test_seed": TEST_SEED,
+    "excludes_clean_rows": True,
+    "inference_n_jobs": 1,
+}
+pkl_path = os.path.join(OUT_DIR, "level4_classifier.pkl")
+with open(pkl_path, "wb") as f:
+    pickle.dump(out, f)
+print(f"[level4-clf] Model saved -> {pkl_path}  (n_jobs=1 for online serving)")
+print("\n[level4-clf] Done.")

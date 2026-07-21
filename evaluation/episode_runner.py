@@ -155,6 +155,7 @@ def run_episode(
     recovery_v4_classifier: Optional[Dict] = None,
     recovery_v4_calibration: Optional[Dict] = None,
     recovery_v4_checkpoint: str = "clean_2M",
+    level4_classifier: Optional[Dict] = None,
 ) -> Tuple[EpisodeResult, pd.DataFrame]:
     """Run one episode and return a summary plus a step-level log DataFrame.
 
@@ -183,32 +184,59 @@ def run_episode(
         policy_fn:         Optional callable that overrides ``method`` dispatch.
         use_recovery:      If True, apply TAIRO C5 recovery damping each step.
         target_shift_step: Step at which legacy target_shift activates.
-        recovery_v4_classifier: Required when method == "sac_her_recovery_v4".
-                            The loaded results/classifier_seedfix/online_failure_classifier.pkl
+        recovery_v4_classifier: Required when method in {"sac_her_recovery_v4",
+                            "sac_her_recovery_v4_hx"}. The loaded
+                            results/classifier_seedfix/online_failure_classifier.pkl
                             dict ({'model', 'feature_cols', ...}). Loaded once by
                             the caller (mirrors how `model` is already loaded
                             once and reused across episodes) -- not reloaded
-                            per episode.
-        recovery_v4_calibration: Required when method == "sac_her_recovery_v4".
-                            The loaded results/classifier_seedfix/recovery_v4_trigger_calibration.pkl
+                            per episode. Both v4 and v4_hx share the same
+                            classifier artifact -- v4_hx only adds a stage-
+                            gating step on top of the same class probabilities
+                            (see recovery/recovery_v4_hx.py).
+        recovery_v4_calibration: Required when method in {"sac_her_recovery_v4",
+                            "sac_her_recovery_v4_hx"}. The loaded
+                            results/classifier_seedfix/recovery_v4_trigger_calibration.pkl
                             dict ({checkpoint_name: clean_pfail_p95}).
         recovery_v4_checkpoint: Which checkpoint's calibration entry to use
                             (default "clean_2M" -- Tier 1 CCAR is currently
                             scoped to clean_2M only; see RECOVERY_V4.md
                             section 2.6). Only meaningful when
-                            method == "sac_her_recovery_v4".
+                            method in {"sac_her_recovery_v4", "sac_her_recovery_v4_hx",
+                            "sac_her_recovery_v4_hx2"}.
+        level4_classifier: Required when method == "sac_her_recovery_v4_hx2".
+                            The loaded results/classifier_level4/level4_classifier.pkl
+                            dict ({'model', 'feature_cols', 'label_order', ...}).
+                            Second classifier artifact, distinct from
+                            recovery_v4_classifier -- see recovery/recovery_v4_hx2.py.
 
     Returns:
         Tuple of (EpisodeResult, step_log_DataFrame).
     """
     # Recovery version is encoded in the method name — derive it here.
-    _use_recovery = method in {"sac_her_recovery_v2", "sac_her_recovery_v3", "sac_her_recovery_v4"}
-    _use_recovery_v4 = method == "sac_her_recovery_v4"
+    _use_recovery = method in {"sac_her_recovery_v2", "sac_her_recovery_v3",
+                                "sac_her_recovery_v4", "sac_her_recovery_v4_hx",
+                                "sac_her_recovery_v4_hx2"}
+    _use_recovery_v4 = method in {"sac_her_recovery_v4", "sac_her_recovery_v4_hx",
+                                   "sac_her_recovery_v4_hx2"}
+    _use_recovery_v4_hx2 = method == "sac_her_recovery_v4_hx2"
     if _use_recovery_v4:
-        from recovery.recovery_v4 import recovery_step, TriggerWeight, ExpertState, EPSILON as EPSILON_V4
+        from recovery.recovery_v4 import TriggerWeight, ExpertState, EPSILON as EPSILON_V4
+        if method == "sac_her_recovery_v4_hx2":
+            from recovery.recovery_v4_hx2 import recovery_step_hx2 as recovery_step
+            if level4_classifier is None:
+                raise ValueError(
+                    "run_episode: method='sac_her_recovery_v4_hx2' requires "
+                    "level4_classifier to be loaded once by the caller and "
+                    "passed in, in addition to recovery_v4_classifier."
+                )
+        elif method == "sac_her_recovery_v4_hx":
+            from recovery.recovery_v4_hx import recovery_step_hx as recovery_step
+        else:
+            from recovery.recovery_v4 import recovery_step
         if recovery_v4_classifier is None or recovery_v4_calibration is None:
             raise ValueError(
-                "run_episode: method='sac_her_recovery_v4' requires "
+                f"run_episode: method='{method}' requires "
                 "recovery_v4_classifier and recovery_v4_calibration to be "
                 "loaded once by the caller and passed in (mirrors how "
                 "`model` is loaded once, not per episode)."
@@ -266,7 +294,9 @@ def run_episode(
         # -- Policy action -------------------------------------------------------
         if policy_fn is not None:
             action = policy_fn(env, policy_obs)
-        elif method in {"sac_her", "sac_her_recovery_v2", "sac_her_recovery_v3", "sac_her_recovery_v4"} and model is not None:
+        elif method in {"sac_her", "sac_her_recovery_v2", "sac_her_recovery_v3",
+                        "sac_her_recovery_v4", "sac_her_recovery_v4_hx",
+                        "sac_her_recovery_v4_hx2"} and model is not None:
             action, _ = model.predict(policy_obs, deterministic=True)
         else:
             raise ValueError(f"run_episode: unknown method '{method}' or model is None")
@@ -286,7 +316,7 @@ def run_episode(
             # step_history_df holds steps [0, t-1] only -- step t has not
             # happened yet, same causal discipline as evaluation/causal_features.py.
             step_history_df = pd.DataFrame(step_logs)
-            executed_action, _v4_probs, recovery_v4_weight = recovery_step(
+            _recovery_kwargs = dict(
                 policy_action=executed_action,
                 obs=obs,                      # raw unattacked obs — same as v2/v3
                 step_history_df=step_history_df,
@@ -295,6 +325,9 @@ def run_episode(
                 expert_state=recovery_v4_expert_state,
                 step=t,
             )
+            if _use_recovery_v4_hx2:
+                _recovery_kwargs["level4_classifier_artifact"] = level4_classifier
+            executed_action, _v4_probs, recovery_v4_weight = recovery_step(**_recovery_kwargs)
             # trigger.ema_pfail is mutated in place by recovery_step's call to
             # trigger.update() -- reading it here gives exactly the value that
             # produced recovery_v4_weight this step (or the unset 0.0 initial

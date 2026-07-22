@@ -5,30 +5,33 @@
 - Constraints or deadlines: IEEE BigData 2026 REU Symposium submission target.
 
 ## Current Status
-TAIRO-HX Levels 1-5 are all built in some form. Level 1 (task stage): labels + classifier complete. Level 2 (anomaly detection): complete, `clean_2M`-scoped. Level 3 (behavioral failure): served by the existing Phase 8/9 classifier; multi-label extension explicitly re-raised 2026-07-20 and reconfirmed deferred (unchanged ~2.5-3.5 day validation cost). Level 4 (attack family): ground-truth labels + standalone classifier complete. **Level 5 (Recovery Decision) was built and evaluated against actual episode outcomes 2026-07-20** — rule-based decision logic over Levels 2-4's chained predictions, output taxonomy = the memo's 7-decision scheme. Its `stop_safely` proxy correctly identifies 95.6% of genuinely unrecoverable clean_2M episodes, but also false-fires on 71.9% of *recoverable* ones; a calibration sweep confirmed this is not a threshold problem — at 14-checkpoints-per-episode granularity, the abnormal-streak signal cannot distinguish "still working on it" from "will never succeed." Documented as a known limitation (`findings.md` Phase 10), not fixed. Level 5 was deliberately kept fully separate from `recovery_v4.py` this session. Item 1's hierarchical RF/XGBoost classifiers are now also persisted as `.pkl` (previously eval-only).
+TAIRO-HX Levels 1-5 are all built. Level 1 (task stage): labels + classifier complete. Level 2 (anomaly detection): complete, `clean_2M`-scoped. Level 3 (behavioral failure): served by the existing Phase 8/9 classifier; multi-label extension re-raised 2026-07-20 and reconfirmed deferred. Level 4 (attack family): ground-truth labels + standalone classifier complete. **Level 5 (Recovery Decision): built and evaluated, closed with a documented, unfixable limitation** — its `stop_safely` proxy false-fires on 71.9% of recoverable episodes; a calibration sweep confirmed this is a genuine information-theoretic ceiling at 14-checkpoint granularity, not a tuning problem (`findings.md` Phase 10). Level 5 stays offline-only, not wired into any runtime controller.
 
-**New direction, 2026-07-20, from the user's mentor: the classifier hierarchy should actually improve recovery, not stay a parallel offline analysis track.** This supersedes the previous session's "keep Level 5 separate" default — the goal now is integration, routed around Level 5's specific stop_safely limitation rather than blocked by it.
+**Mentor redirect (2026-07-20): the hierarchy should genuinely improve recovery, not stay a parallel offline track — this has now been acted on with real, power-checked results (2026-07-21).** Two new recovery variants were built on top of `recovery_v4.py`'s existing Tier 1 CCAR (which itself is untouched):
+- **`sac_her_recovery_v4_hx`** (Level 1 stage-gating alone): evaluated at full power (n=450, all 11 conditions). No confirmed benefit anywhere. **Should not be adopted.**
+- **`sac_her_recovery_v4_hx2`** (Level 1 + Level 4 attack-family down-weight): **the keeper.** Real, BH-corrected-significant win on `grip_state_falsification` (+4.2pp, 14.0%→18.2%, BH-adjusted p=0.0034), robust across the full 11-condition grid, not just the initially-flagged 4-condition subset.
 
-Prior Item 1 result for reference: flat RF 0.9424/0.8159 (canonical) < flat XGBoost 0.9485/0.8240 < hierarchical RF 0.9568/0.8734 < hierarchical XGBoost 0.9614/0.8817 (accuracy/macro-F1, episode-level, seed-4 test).
+**New finding from a systematic do-no-harm audit** (every recovery method vs. plain `sac_her`, 55 comparisons, BH-FDR corrected — `scripts/audit_recovery_do_no_harm.py`, `results/recovery_do_no_harm_audit.csv`): **plain `sac_her_recovery_v4` — the paper's current headline B4 method — does statistically significant harm on `grip_state_falsification` relative to no recovery at all** (19.8%→14.0%, BH-adjusted p=0.00017). `v4_hx` inherits this unchanged; `v4_hx2` is what corrects it back to statistical parity with doing nothing (18.2% vs 19.8%, not significantly different). No other method/condition pair in the grid shows confirmed harm or benefit. This reframes v4_hx2 as fixing a real problem in the currently-paper-facing method, not just improving on an already-fine baseline — and raises a question (not yet decided) about whether the paper's existing Tier 1 CCAR section needs a caveat on this condition regardless of whether v4_hx2 itself is adopted. Full detail: `RECOVERY_V4.md` §5.3, §5.6, §5.7; `findings.md` Phase 11 + its 2026-07-21 update.
+
+Prior Item 1 result for reference (unchanged): flat RF 0.9424/0.8159 (canonical) < flat XGBoost 0.9485/0.8240 < hierarchical RF 0.9568/0.8734 < hierarchical XGBoost 0.9614/0.8817 (accuracy/macro-F1, episode-level, seed-4 test).
 
 **New, 2026-07-21: an interactive Streamlit live-attack demo was built** (`app/live_attack_demo.py`, `app/sim_worker.py`) — the SAC+HER `clean_2M` PickAndPlace policy runs live against user-selected attack conditions/magnitudes, with a real-time MuJoCo render on one side and playback controls (Start/Pause/Step/Reset) on the other. Committed as `71e03bc streamlit implementation v1`. This is a separate, parallel workstream from the TAIRO-HX hierarchical classifier work above — not part of the recovery-integration plan.
 
 **2026-07-21: the Streamlit live-attack demo's v2 scope is now also built and verified** — a live metrics panel (distance-to-goal, C4 jerk/safety indicators) and a classifier/recovery overlay (online failure-mode classifier's live `p_fail`, Recovery v4's trigger/blend-weight `w`) were added to `app/live_attack_demo.py`, reusing `evaluation/causal_features.py`'s `build_causal_features_online`, `evaluation/episode_runner.py`'s `_pnp_spatial_fields` helper, and `recovery/recovery_v4.py`'s `TriggerWeight`/`get_class_probs` rather than reimplementing any of that logic. The overlay is telemetry-only — it does not wire Recovery v4's blended action into the executed action; the demo still always executes the (possibly attacked) SAC+HER policy action. Verified via real-browser (Playwright) testing: a full auto-play episode to completion, and a `sensor_dropout` run that correctly reproduced the documented near-1.0 `p_fail` / `never_reached_object` finding in real time. Both v2 items from the prior entry's Next Steps are now done — nothing outstanding on this workstream.
 
 ## Next Steps
-1. **Build a stage-gated expert mixture in `recovery_v4.py`.** `recovery_v4.py` currently conditions only on its own online failure_mode classifier (Level-3-equivalent) — it uses neither Level 1 (task stage) nor Level 4 (attack family) at all. Plan: compute Level 1's task stage online (free — same deterministic cascade as `build_level1_labels.py`, no model call), build a stage↔expert compatibility mask, and multiply it into `compute_recovery_action`'s existing per-expert class-probability weights before mixing.
-2. Ship as a **new method variant** (e.g. `sac_her_recovery_v4_hx`) in `config.ALL_METHODS`, not a replacement — A/B against the existing evaluated `sac_her_recovery_v4` CCAR results without risking what's already paper-facing.
-3. Evaluate on the same clean_2M 11-condition × 5-seed × 30-episode grid recovery_v4 already uses: overall success rate, the documented weak spots (goal spoofing, grip-state falsification), and a clean-condition regression check.
-4. If that shows a real lift, layer in **Level 4 (attack family)** as a second refinement — e.g. down-weighting the recovery blend when Level 4 confidently predicts `action_actuation`, since RECOVERY_V4.md already argues action-channel attacks are structurally unrecoverable by state-based methods.
-5. Write up results either way (positive or negative lift is real paper content).
-6. Timeline: 11 days total to the July 31 IEEE BigData 2026 REU Symposium deadline, but this entire week is budgeted for the recovery-integration build before shifting to paper writing.
-7. Paper-framing conversation (Item 1's stacking-effect caveat + Level 2's `clean_2M` scope) — still open, still deferred.
+1. **DECIDED (2026-07-21, user sign-off): `sac_her_recovery_v4_hx2` folds into the paper's Recovery v4 section** as a documented extension. `RECOVERY_V4.md` §5.7 has the source material (design, full-grid evaluation, do-no-harm corroboration) to draft from when paper writing resumes.
+2. **Still open: does the paper's existing Tier 1 CCAR writeup need a caveat on `grip_state_falsification`**, given the newly-confirmed harm in plain v4 itself — independent of decision #1, not yet answered.
+3. **Consider calibrating** `STAGE_EXPERT_SOFT_WEIGHT` / `LEVEL4_ACTION_ACTUATION_DOWNWEIGHT` / `LEVEL4_CONFIDENT_THRESH` now that the full 11-condition picture exists to calibrate against (was premature before this session's power check + audit completed).
+4. Timeline: July 31, 2026 IEEE BigData 2026 REU Symposium deadline (10 days out as of 2026-07-21); this week was budgeted for recovery-integration work before shifting to paper writing — item 2 above is now the main open decision gating that shift.
+5. Paper-framing (Item 1's stacking-effect caveat + Level 2's `clean_2M` scope) and JCDL scope-vs-runway conversations remain open whenever wanted. Actually drafting the v4_hx2 paper text itself is also still open — decision #1 settles *whether*, not *when*/*who writes it*.
 
 ## Open Questions / Blockers
 - Two competing trustworthiness formulas (`metrics.py` weights vs. paper's Eq. 2) — still unresolved; the reconciliation script/audit trail didn't survive migration. Not touched in Phase 0.5.
 - Sparse-vs-dense online-classifier query cadence (Recovery v4 Phase C) — undecided; gates whether the `reported_grasp` Option B/C alternatives become worth revisiting.
 - **Level 2's `clean_2M`-only scope — paper-framing conversation still not had**, flagged across multiple sessions now. Directly relevant to Item 1's hierarchical result (see Next Steps #7): Level 2 is one of the three upstream signals feeding the chain, so its scope limitation and the OOF-stacking-vs-stage-conditioning question should likely be resolved together, not separately.
 - **Level 5's `stop_safely` proxy has a documented, unfixed limitation** (see Current Status) — not a blocker on the new recovery-integration plan, since that plan routes around it via Level 1/4 conditioning rather than depending on Level 5's specific rule.
+- **Plain `sac_her_recovery_v4`'s confirmed harm on `grip_state_falsification`** (do-no-harm audit, 2026-07-21) is a new, paper-relevant open question — not a blocker on v4_hx2 adoption, but a separate decision about whether/how the existing Tier 1 CCAR section should acknowledge it.
 - **Causal flat RF baseline — reference material for Item 1, not a comparison-point substitute (corrected 2026-07-20, see Next Steps item 1).** `causal_feature_matrix.csv` has 14 rows/episode (one per checkpoint_t, same hindsight label repeated); the project's existing pooling convention (Phase 9B `train_causal_classifier.py`, also used for the saved Phase C online classifier) trains/evaluates on all 14 checkpoints pooled. This pooled RF is checkpoint-level, not episode-level, so it characterizes detection-delay/false-alarm behavior usefully but does not substitute for the episode-level flat-vs-hierarchical comparison memo Section 4 calls for. Detection-delay characterization (2026-07-19, `retrain/causal-flat-rf-baseline`) confirms the pooled number is optimistic *early* in the episode specifically (t=19–59: acc 0.917→0.935, macro-F1 0.765→0.801; false-alarm rate on clean+success rows ~70–77%) and stabilizes from t≈69 onward (acc ~0.955–0.961, macro-F1 ~0.855–0.881, false-alarm rate ~7–10%). Remaining open question is narrower than before and not blocking Item 1: whether a live recovery trigger should query the model at every step (as trained) or wait past the ~t=69 inflection — that's an operating-point decision deliberately left unmade pending review, relevant to recovery-trigger design more than to the flat-vs-hierarchical comparison itself.
 - **False-alarm early→mid drop — now statistically confirmed (2026-07-20).** The steep drop noted above (n=420, ~30/checkpoint) was too sparse per-checkpoint to cite with confidence. Bootstrap CIs (95%, 5000 resamples) on the same data: per-checkpoint CIs are wide (n=30 each, e.g. t=19: 0.733 [0.567, 0.867]) but the early/mid/late-binned CIs are not — early (t=19–59, n=150): 0.720 [0.647, 0.793]; mid (t=69–109, n=150): 0.067 [0.027, 0.107]; late (t=119–149, n=120): 0.100 [0.050, 0.158]. Early-vs-mid CIs do not overlap (gap=0.540) — the drop is real, not noise. Mid-vs-late CIs overlap substantially — no evidence of further change after t≈69. This is the empirical basis cited for Phase 1 Item 2 (task-stage recognition); it is evidence only, not a cadence or operating-point decision (still open, see above). Script: `scripts/bootstrap_false_alarm_ci.py`. Output: `results/classifier_causal_baseline/false_alarm_ci.txt`.
 
@@ -39,6 +42,53 @@ Prior Item 1 result for reference: flat RF 0.9424/0.8159 (canonical) < flat XGBo
 - Streamlit live demo: `app/live_attack_demo.py` (UI/session-state/control flow) + `app/sim_worker.py` (subprocess-isolated MuJoCo rendering — required on macOS; see Session Log 2026-07-21).
 
 ## Session Log
+
+### 2026-07-21 (recovery-integration power check + do-no-harm audit + fold-in decision)
+- **What changed:** Extended the recovery-variant power check (n=450, seeds 0-14) from the
+  previously-checked 4 conditions to the remaining 7 (`sensor_bias`, `sensor_dropout`,
+  `action_clipping`, `action_reversal`, `contact_dropout`, `goal_spoof_immediate`, `clean`),
+  completing the full 11-condition grid for `sac_her_recovery_v4`/`_hx`/`_hx2`. Backfilled
+  `sac_her` onto seeds 5-14 across all 11 conditions so every recovery-vs-baseline comparison
+  could use a paired test. Built a new systematic do-no-harm audit
+  (`scripts/audit_recovery_do_no_harm.py`) comparing all 5 recovery methods (v2/v3/v4/v4_hx/v4_hx2)
+  against plain `sac_her`, 55 comparisons, Benjamini-Hochberg FDR corrected. Updated
+  `RECOVERY_V4.md` (§5.3 update, new §5.6/§5.7) and `findings.md` (Phase 11 update) with the
+  full-grid results.
+- **Decisions made:** (1) Backfill `sac_her` onto seeds 5-14 rather than use unpaired tests,
+  so every comparison in the audit is a paired McNemar test — confirmed via sign-off, ~30 min
+  extra compute for consistent methodology across the whole audit. (2) Apply BH-FDR correction
+  given this audit is a systematic 55-comparison scan (unlike RECOVERY_V4.md §5.3's original
+  2-condition targeted test, which didn't need one) — confirmed via sign-off. Applied the same
+  correction retroactively to the original v4_hx/v4_hx2-vs-v4 comparison once extended to the
+  full 11-condition grid (22 comparisons), which changed one conclusion (see Rationale).
+- **Rationale / results:** The do-no-harm audit found that plain `sac_her_recovery_v4` — already
+  the paper's headline B4 method — does statistically significant harm on
+  `grip_state_falsification` relative to no recovery at all (19.8%→14.0%, BH-adjusted
+  p=0.00017); `v4_hx` inherits this unchanged; `v4_hx2` corrects it back to statistical parity
+  with doing nothing (18.2%, not significantly different from 19.8%). No other method/condition
+  pair in the 55-comparison grid reached significance either direction. Separately, extending
+  the original v4-variant-vs-v4 comparison to the full 11-condition grid changed one earlier
+  conclusion: the `object_pose_spoof` regression previously reported as a "real, significant
+  harm" for `v4_hx` (session_handoff_5, based on a 4-condition test) no longer reaches
+  significance once BH-corrected across the full 22-comparison grid (BH-adjusted p=0.180) —
+  same point estimate and mechanism, downgraded from confirmed to plausible-but-unconfirmed.
+  The `grip_state_falsification` win for `v4_hx2` (+4.2pp) holds at full-grid correction.
+- **Blockers hit / notable events:** Mid-session, discovered a separate, apparently-concurrent
+  Claude Code session had been working on an unrelated Streamlit demo track (`app/`) on this
+  same repo throughout the day, committing directly to `main` three times (`71e03bc`, `4f38b6e`,
+  `132f702`) rather than staging — the third commit (20:25) postdates `session_handoff_6.md`
+  and appears to add recovery-blending to the demo, a feature that handoff explicitly flagged
+  as needing the user's sign-off first, with no recorded sign-off. Flagged to the user, who
+  chose to leave it untouched and review separately — not investigated further here, no files
+  from that track touched. Also confirmed at session start that the *previous* session's own
+  work (session_handoff_5, Level 5 + v4-HX/HX2 build) had landed as a direct commit
+  (`45c8c51`) rather than staged, contrary to that handoff's own claim — user chose to proceed
+  without further action on it.
+- **Follow-up decision (same session):** after being shown the do-no-harm audit results in
+  plain language and the two linked open questions (fold `v4_hx2` into the paper? caveat plain
+  v4?), the user directly confirmed **`sac_her_recovery_v4_hx2` folds into the paper's Recovery
+  v4 section** — recorded in `RECOVERY_V4.md` §5.7 and Next Steps above. The plain-v4-caveat
+  question was not addressed in this exchange and remains open.
 
 ### 2026-07-21 (second entry)
 - **What changed:** Added the two v2 features to `app/live_attack_demo.py`: a live metrics panel (distance-to-goal via `distance_to_goal`, C4 jerk/safety via the same per-channel split-jerk formula as `episode_runner.py`) and a classifier/recovery overlay (online failure-mode classifier's `p_fail`, EMA(`p_fail`), and Recovery v4's blend weight `w`). New session-state fields track `prev_executed` (jerk comparand) and a growing `step_history` list (the step-log schema `build_causal_features_online` needs), plus a per-episode `TriggerWeight` instance recreated on Reset.

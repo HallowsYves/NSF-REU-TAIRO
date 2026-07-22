@@ -32,6 +32,7 @@ import os
 import time
 import traceback
 
+import mujoco
 import numpy as np
 
 import config
@@ -86,14 +87,48 @@ def _make_render_env(seed: int):
     return env
 
 
+def _render_preserving_physics(env, scratch_data):
+    """Render a frame without letting rendering perturb the physics state
+    the next env.step() sees.
+
+    Root cause (found via direct A/B, then confirmed with a full MjData
+    snapshot/restore): gymnasium_robotics's MujocoFetchEnv._render_callback
+    -- called by every env.render() -- repositions the purely-cosmetic
+    goal-marker site and then calls mujoco.mj_forward() to apply it. But
+    mj_forward() also re-runs MuJoCo's contact/constraint solver, which
+    measurably changes data.qacc_warmstart and other solver-internal
+    fields as a side effect -- confirmed on a real seed/condition where
+    this flips an episode from FAIL to SUCCESS purely because the demo
+    renders every step and the headless batch eval (evaluation/
+    episode_runner.py) does not. Restoring data.qacc_warmstart alone was
+    NOT sufficient (still perturbed the outcome); only a full MjData
+    snapshot/restore around render() reproduces the same trajectory as
+    never rendering at all. This is upstream gymnasium_robotics behavior
+    (mj_forward is not side-effect-free between mj_step calls, contrary
+    to what its name suggests), not something fixable there -- worked
+    around here by treating render() as the side-effect-free operation
+    it's assumed to be, via a full physics-state snapshot around it.
+
+    scratch_data is a pre-allocated MjData buffer for the current env's
+    model, reused across calls to avoid a fresh allocation every frame.
+    """
+    model = env.unwrapped.model
+    data = env.unwrapped.data
+    mujoco.mj_copyData(scratch_data, model, data)
+    frame = env.render()
+    mujoco.mj_copyData(data, model, scratch_data)
+    return frame
+
+
 def _worker_loop(conn, seed: int, log_path: str = WORKER_LOG_PATH) -> None:
     _log("worker starting", log_path)
     try:
         env = _make_render_env(seed)
+        scratch_data = mujoco.MjData(env.unwrapped.model)
         _log("env created", log_path)
         obs, _info = env.reset(seed=seed)
         _log("env reset ok", log_path)
-        frame = env.render()
+        frame = _render_preserving_physics(env, scratch_data)
         _log(f"first render ok, frame shape={frame.shape}", log_path)
         conn.send(("ready", obs, frame))
 
@@ -104,15 +139,16 @@ def _worker_loop(conn, seed: int, log_path: str = WORKER_LOG_PATH) -> None:
             if cmd == "step":
                 action = msg[1]
                 obs, reward, terminated, truncated, info = env.step(action)
-                frame = env.render()
+                frame = _render_preserving_physics(env, scratch_data)
                 conn.send(("stepped", obs, reward, terminated, truncated, info, frame))
 
             elif cmd == "reset":
                 seed = msg[1]
                 env.close()
                 env = _make_render_env(seed)
+                scratch_data = mujoco.MjData(env.unwrapped.model)
                 obs, _info = env.reset(seed=seed)
-                frame = env.render()
+                frame = _render_preserving_physics(env, scratch_data)
                 conn.send(("ready", obs, frame))
 
             elif cmd == "close":

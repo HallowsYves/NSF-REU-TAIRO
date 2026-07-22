@@ -28,6 +28,7 @@ import os
 import pickle
 import sys
 import time
+from typing import Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -62,23 +63,28 @@ CLASSIFIER_SEEDFIX_DIR = "results/classifier_seedfix"
 BENCHMARK_SUMMARY_PATH = "results/data_recovery_v4/phase6_summary_sac_her_pickandplace_clean_2M.csv"
 
 # A concrete, verified example of Recovery v4 flipping a failed episode
-# into a success in THIS demo specifically -- not a lucky guess, and NOT
-# simply copied from the committed episode CSV. Important nuance found
-# while building this feature: SimWorker calls env.render() after every
-# env.step() (needed for the live frame), and that render call measurably
-# perturbs MuJoCo's internal solver/contact warm-start state -- confirmed
-# by direct A/B (same seed/action stream, render() every step vs not)
-# changing a clean-policy action_delay episode from FAIL to SUCCESS. So a
-# seed's outcome in evaluation/episode_runner.py's headless batch eval (no
-# rendering) does not reliably predict its outcome in this rendered demo.
-# This example was found by brute-force seed search calling this exact
-# module's precompute_shared_attack_vectors (not a reimplementation --
-# two earlier passes of this search rolled their own vector handling and
-# produced false positives that did not reproduce live, once by discarding
-# apply_sensor_attack's returned vectors between steps, once by never
-# calling precompute_shared_attack_vectors at all) and confirmed live in a
-# real browser before being set here.
-SUGGESTED_EXAMPLE = {"condition": "goal_spoof_midep", "seed": 6}
+# into a success -- taken directly from the committed episode CSV
+# (results/data_recovery_v4/episode_results_sac_her_pickandplace_clean_2M.csv,
+# sac_her vs sac_her_recovery_v4, reset_seed = 100*seed + episode_in_seed
+# matching evaluation/episode_runner.py's convention). action_delay is one
+# of only two conditions with a clean net-positive lift and zero
+# down-flips in that grid (the other is action_clipping); most other
+# conditions/seeds show no visible per-episode difference, since Tier 1
+# CCAR's real aggregate benefit on this checkpoint is small (<2pp best
+# case; grip_state_falsification is a net *regression*). See
+# RECOVERY_V4.md for the full picture.
+#
+# This CSV-derived value is safe to use again as of the mj_copyData fix in
+# sim_worker.py's _render_preserving_physics -- until that fix, SimWorker
+# calling env.render() every step measurably perturbed MuJoCo's physics
+# (confirmed root cause: gymnasium_robotics's FetchEnv._render_callback
+# calls mj_forward() to reposition a cosmetic goal-marker site, which as a
+# side effect re-runs the contact solver and changes data.qacc_warmstart),
+# so a seed's outcome in the headless batch eval did not reliably predict
+# its outcome in this rendered demo. Re-verified through the actual
+# SimWorker subprocess after the fix: action_delay/seed=6 now reproduces
+# exactly clean=FAIL, recovery=SUCCESS, matching the CSV.
+SUGGESTED_EXAMPLE = {"condition": "action_delay", "seed": 6}
 
 # FetchPickAndPlace-v4's action space is the standard Box(-1, 1, (4,))
 # (same convention already hardcoded in attacks/action_attacks.py's
@@ -196,7 +202,7 @@ class PaneState:
         self.first_recovery_step = float("nan")
 
 
-def precompute_shared_attack_vectors(condition: str, obs, attack_level: float, seed: int):
+def precompute_shared_attack_vectors(condition: str, obs, attack_level: float, seed: Optional[int]):
     """Draw the per-episode attack vector ONCE, so both panes are attacked
     identically instead of each independently self-sampling.
 
@@ -232,6 +238,58 @@ def precompute_shared_attack_vectors(condition: str, obs, attack_level: float, s
             obs, magnitude=attack_level, offset=None, seed=seed,
         )
     return bias_vector, goal_offset, object_pose_offset
+
+
+# Conditions whose per-episode attack vector must be shared between panes
+# (see precompute_shared_attack_vectors), mapped to the PaneState attribute
+# that holds it.
+SHARED_VECTOR_CONDITIONS = {
+    "sensor_bias": "bias_vector",
+    "goal_spoof_immediate": "goal_offset",
+    "goal_spoof_midep": "goal_offset",
+    "object_pose_spoof": "object_pose_offset",
+}
+
+
+def ensure_shared_attack_vectors(condition: str, attack_level: float) -> None:
+    """Re-seed both panes' shared attack vector if the user switched to a
+    vector-sampling condition mid-episode (no Reset) and it hasn't been
+    seeded for this condition yet.
+
+    reset_episode() seeds the shared vector once per episode, but changing
+    the condition dropdown mid-episode without clicking Reset bypasses it
+    entirely (a documented "no Reset required" simplification carried over
+    from v1) -- without this check, each pane would independently
+    self-sample a DIFFERENT vector on its next apply_sensor_attack call,
+    breaking the "identical attack instance" guarantee this comparison
+    depends on. Confirmed as a real gap via a standalone check before this
+    fix: switching clean -> sensor_bias mid-episode without Reset gave the
+    two panes different bias vectors.
+
+    No seed is threaded through here (unlike reset_episode, which uses the
+    episode seed for reproducibility) -- a live mid-episode switch has no
+    natural seed to tie to, and the only real requirement is that both
+    panes agree, not that this correction is itself reproducible run to
+    run.
+    """
+    attr = SHARED_VECTOR_CONDITIONS.get(condition)
+    if attr is None:
+        return
+    ss = st.session_state
+    pc, pr = ss.pane_clean, ss.pane_recovery
+    if getattr(pc, attr) is not None or getattr(pr, attr) is not None:
+        return  # already seeded for this condition, by Reset or a prior call
+
+    seed_obs = pc.obs if pc.worker_error is None else pr.obs
+    if seed_obs is None:
+        return
+    bias_vector, goal_offset, object_pose_offset = precompute_shared_attack_vectors(
+        condition, seed_obs, attack_level, seed=None,
+    )
+    for pane in (pc, pr):
+        pane.bias_vector = bias_vector
+        pane.goal_offset = goal_offset
+        pane.object_pose_offset = object_pose_offset
 
 
 def init_state() -> None:
@@ -539,6 +597,7 @@ def render_fragment(
     if ss.running and not (pc.done and pr.done):
         now = time.monotonic()
         if now - ss.last_step_time >= 1.0 / fps:
+            ensure_shared_attack_vectors(condition, attack_level)
             if not pc.done:
                 step_pane(pc, condition, attack_level)
             if not pr.done:
@@ -581,10 +640,7 @@ def main() -> None:
         "verified example of recovery saving an otherwise-failed episode — "
         "most seeds show no difference, since Recovery v4's real aggregate "
         "benefit on this checkpoint is a small lift on a couple of "
-        "conditions, not a dramatic per-episode effect. Note: rendering each "
-        "frame for display measurably perturbs MuJoCo's physics state, so a "
-        "given seed's outcome here can differ from the same seed in the "
-        "headless batch evaluation results/data_recovery_v4 was built from."
+        "conditions, not a dramatic per-episode effect."
     )
 
     st.subheader("Attack controls")
@@ -626,6 +682,7 @@ def main() -> None:
         if prow1[1].button("Pause", width="stretch"):
             st.session_state.running = False
         if prow2[0].button("Step", disabled=both_done, width="stretch"):
+            ensure_shared_attack_vectors(condition, attack_level)
             if not st.session_state.pane_clean.done:
                 step_pane(st.session_state.pane_clean, condition, attack_level)
             if not st.session_state.pane_recovery.done:

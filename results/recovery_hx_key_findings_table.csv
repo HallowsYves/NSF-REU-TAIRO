@@ -1,0 +1,8 @@
+finding,condition,method,baseline,delta,ci_lo,ci_hi,p_value_bh,significant_bh
+Plain v4 does significant HARM vs. no recovery,grip_state_falsification,sac_her_recovery_v4,sac_her,-0.0577777777777777,-0.0822222222222222,-0.0333333333333333,0.0001695344690233,True
+v4-HX2 fixes the harm: significant win vs. plain v4,grip_state_falsification,sac_her_recovery_v4_hx2,sac_her_recovery_v4,0.0422222222222222,0.0222222222222222,0.0644444444444444,0.0034434795379638,True
+v4-HX2 vs. no recovery: parity restored (not significant either way),grip_state_falsification,sac_her_recovery_v4_hx2,sac_her,-0.0155555555555555,-0.0355555555555555,0.0044444444444444,0.8251556328364781,False
+"v4-HX alone: object_pose_spoof regression, no longer significant at full grid",object_pose_spoof,sac_her_recovery_v4_hx,sac_her_recovery_v4,-0.0688888888888888,-0.1244444444444444,-0.0155555555555555,0.1801739075970929,False
+v4-HX3 targeted fix vs. plain v4: null result,object_pose_spoof,sac_her_recovery_v4_hx3,sac_her_recovery_v4,-0.0222222222222222,-0.0822222222222222,0.0355555555555555,1.0,False
+v4-HX3 vs. adopted v4-HX2: null result,object_pose_spoof,sac_her_recovery_v4_hx3,sac_her_recovery_v4_hx2,0.0088888888888888,-0.0488888888888888,0.0644444444444444,1.0,False
+v4-HX3 preserves the hx2 grip_state_falsification win vs. plain v4,grip_state_falsification,sac_her_recovery_v4_hx3,sac_her_recovery_v4,0.0511111111111111,0.031111111111111,0.0733333333333333,3.409385681152344e-05,True

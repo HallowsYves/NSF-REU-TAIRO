@@ -203,12 +203,14 @@ def run_episode(
                             scoped to clean_2M only; see RECOVERY_V4.md
                             section 2.6). Only meaningful when
                             method in {"sac_her_recovery_v4", "sac_her_recovery_v4_hx",
-                            "sac_her_recovery_v4_hx2"}.
-        level4_classifier: Required when method == "sac_her_recovery_v4_hx2".
-                            The loaded results/classifier_level4/level4_classifier.pkl
+                            "sac_her_recovery_v4_hx2", "sac_her_recovery_v4_hx3"}.
+        level4_classifier: Required when method in {"sac_her_recovery_v4_hx2",
+                            "sac_her_recovery_v4_hx3"}. The loaded
+                            results/classifier_level4/level4_classifier.pkl
                             dict ({'model', 'feature_cols', 'label_order', ...}).
                             Second classifier artifact, distinct from
-                            recovery_v4_classifier -- see recovery/recovery_v4_hx2.py.
+                            recovery_v4_classifier -- see recovery/recovery_v4_hx2.py
+                            and recovery/recovery_v4_hx3.py.
 
     Returns:
         Tuple of (EpisodeResult, step_log_DataFrame).
@@ -216,10 +218,11 @@ def run_episode(
     # Recovery version is encoded in the method name — derive it here.
     _use_recovery = method in {"sac_her_recovery_v2", "sac_her_recovery_v3",
                                 "sac_her_recovery_v4", "sac_her_recovery_v4_hx",
-                                "sac_her_recovery_v4_hx2"}
+                                "sac_her_recovery_v4_hx2", "sac_her_recovery_v4_hx3"}
     _use_recovery_v4 = method in {"sac_her_recovery_v4", "sac_her_recovery_v4_hx",
-                                   "sac_her_recovery_v4_hx2"}
-    _use_recovery_v4_hx2 = method == "sac_her_recovery_v4_hx2"
+                                   "sac_her_recovery_v4_hx2", "sac_her_recovery_v4_hx3"}
+    # Both hx2 and hx3 need level4_classifier_artifact passed into recovery_step.
+    _needs_level4 = method in {"sac_her_recovery_v4_hx2", "sac_her_recovery_v4_hx3"}
     if _use_recovery_v4:
         from recovery.recovery_v4 import TriggerWeight, ExpertState, EPSILON as EPSILON_V4
         if method == "sac_her_recovery_v4_hx2":
@@ -227,6 +230,14 @@ def run_episode(
             if level4_classifier is None:
                 raise ValueError(
                     "run_episode: method='sac_her_recovery_v4_hx2' requires "
+                    "level4_classifier to be loaded once by the caller and "
+                    "passed in, in addition to recovery_v4_classifier."
+                )
+        elif method == "sac_her_recovery_v4_hx3":
+            from recovery.recovery_v4_hx3 import recovery_step_hx3 as recovery_step
+            if level4_classifier is None:
+                raise ValueError(
+                    "run_episode: method='sac_her_recovery_v4_hx3' requires "
                     "level4_classifier to be loaded once by the caller and "
                     "passed in, in addition to recovery_v4_classifier."
                 )
@@ -296,7 +307,7 @@ def run_episode(
             action = policy_fn(env, policy_obs)
         elif method in {"sac_her", "sac_her_recovery_v2", "sac_her_recovery_v3",
                         "sac_her_recovery_v4", "sac_her_recovery_v4_hx",
-                        "sac_her_recovery_v4_hx2"} and model is not None:
+                        "sac_her_recovery_v4_hx2", "sac_her_recovery_v4_hx3"} and model is not None:
             action, _ = model.predict(policy_obs, deterministic=True)
         else:
             raise ValueError(f"run_episode: unknown method '{method}' or model is None")
@@ -325,7 +336,7 @@ def run_episode(
                 expert_state=recovery_v4_expert_state,
                 step=t,
             )
-            if _use_recovery_v4_hx2:
+            if _needs_level4:
                 _recovery_kwargs["level4_classifier_artifact"] = level4_classifier
             executed_action, _v4_probs, recovery_v4_weight = recovery_step(**_recovery_kwargs)
             # trigger.ema_pfail is mutated in place by recovery_step's call to

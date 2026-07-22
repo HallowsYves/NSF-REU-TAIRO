@@ -512,6 +512,16 @@ def render_trustworthiness_section(slot, condition: str, attack_level: float) ->
     pc, pr = ss.pane_clean, ss.pane_recovery
 
     with slot:
+        if pc.worker_error or pr.worker_error:
+            # step_pane() sets pane.done = True on a SimWorkerCrashed too
+            # (it's a terminal state for that pane), which would otherwise
+            # satisfy the "both done" check below and render this section
+            # as if the episode legitimately finished -- pc.success/
+            # pr.success are never set on a crash, so the comparison below
+            # would silently compare against None. render_pane() already
+            # shows the crash itself; this section just stays hidden.
+            st.caption("Trustworthiness comparison unavailable — a render subprocess crashed this run.")
+            return
         if not (pc.done and pr.done):
             st.caption("Trustworthiness comparison appears here once both episodes finish.")
             return

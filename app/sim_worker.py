@@ -29,6 +29,8 @@ child got before dying even when the crash itself isn't catchable.
 
 import multiprocessing as mp
 import os
+import pickle
+import threading
 import time
 import traceback
 
@@ -169,23 +171,56 @@ class SimWorkerCrashed(RuntimeError):
     """Raised when the render subprocess dies (crash or otherwise)."""
 
 
+# multiprocessing's spawn-based Process.start() reduces the child's Pipe
+# handle via a process-GLOBAL "currently spawning Popen" slot (see
+# multiprocessing/context.py's set_spawning_popen/get_spawning_popen,
+# used internally by popen_spawn_posix during argument pickling). Streamlit
+# runs each browser session's script in its own thread of the SAME process,
+# so two sessions landing at nearly the same instant (e.g. two tabs opened
+# together) can call SimWorker.__init__ concurrently from different
+# threads -- racing on that global slot and corrupting which pipe file
+# descriptor gets wired into which child. Confirmed via a real multi-session
+# stress test: concurrent session startup produced _pickle.UnpicklingError
+# ("invalid load key", "could not find MARK") on the parent's recv() and
+# BrokenPipeError on the child's send(), consistently reproducing whenever
+# multiple SimWorkers were constructed at the same time. Tried narrowing
+# the lock to just Pipe()+Process.start() (releasing before the ~1-2s
+# handshake recv()) to let concurrent cold-starts overlap more -- this
+# measurably made things WORSE (0/4 sessions completed vs. this wider
+# scope's 4/4 and 4/4 on repeat runs), so the lock deliberately holds
+# through the initial handshake too, fully serializing each session's
+# cold start. Once running, each session's step()/reset() calls only
+# touch its own already-established pipe and stay fully concurrent --
+# only the ~1-2s-per-worker startup is serialized, not gameplay.
+_SPAWN_LOCK = threading.Lock()
+
+
 class SimWorker:
     """Owns a subprocess running the MuJoCo env; talks to it over a Pipe."""
 
     def __init__(self, seed: int = 0, name: str = "") -> None:
         self._log_path = _log_path(name)
         ctx = mp.get_context("spawn")
-        self._parent_conn, child_conn = ctx.Pipe()
-        self._process = ctx.Process(
-            target=_worker_loop, args=(child_conn, seed, self._log_path), daemon=True
-        )
-        self._process.start()
-        _tag, self.obs, self.frame = self._recv()
+        with _SPAWN_LOCK:
+            self._parent_conn, child_conn = ctx.Pipe()
+            self._process = ctx.Process(
+                target=_worker_loop, args=(child_conn, seed, self._log_path), daemon=True
+            )
+            self._process.start()
+            _tag, self.obs, self.frame = self._recv()
 
     def _recv(self):
         try:
             msg = self._parent_conn.recv()
-        except EOFError as e:
+        except (EOFError, OSError, pickle.PickleError) as e:
+            # EOFError = pipe closed (process gone). OSError/PickleError =
+            # the pipe delivered a truncated or garbled byte stream --
+            # confirmed via the same stress test that surfaced the
+            # _SPAWN_LOCK race above: before that fix, a corrupted read
+            # here raised _pickle.UnpicklingError uncaught, crashing the
+            # whole Streamlit session with a raw traceback instead of this
+            # class's intended graceful error. The lock removes the known
+            # cause; this still catches the failure mode defensively.
             raise SimWorkerCrashed(
                 f"Render subprocess died unexpectedly (exitcode={self._process.exitcode}). "
                 f"See {self._log_path} for details."

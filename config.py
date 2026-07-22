@@ -86,6 +86,7 @@ ALL_METHODS = [
     "sac_her_recovery_v4",
     "sac_her_recovery_v4_hx",
     "sac_her_recovery_v4_hx2",
+    "sac_her_recovery_v4_hx3",
 ]
 
 DEFAULT_METHODS = [

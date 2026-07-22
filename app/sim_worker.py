@@ -38,6 +38,17 @@ import config
 
 WORKER_LOG_PATH = "/tmp/tairo_sim_worker.log"
 
+
+def _log_path(name: str) -> str:
+    """Per-worker log path so two simultaneous workers (recovery-comparison
+    mode) don't interleave indistinguishably in one shared file. Empty name
+    (the default, single-worker case) preserves the original path exactly.
+    """
+    if not name:
+        return WORKER_LOG_PATH
+    root, ext = os.path.splitext(WORKER_LOG_PATH)
+    return f"{root}_{name}{ext}"
+
 # Demo-only render tuning (cosmetic; does not affect obs/physics used by the
 # policy or attacks). The gymnasium-robotics Fetch envs default to a 480x480
 # frame from a distant, wide-angle camera -- fine for batch video recording,
@@ -54,8 +65,8 @@ DEMO_CAMERA_CONFIG = {
 }
 
 
-def _log(msg: str) -> None:
-    with open(WORKER_LOG_PATH, "a") as f:
+def _log(msg: str, log_path: str = WORKER_LOG_PATH) -> None:
+    with open(log_path, "a") as f:
         f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} [pid {os.getpid()}] {msg}\n")
         f.flush()
 
@@ -75,15 +86,15 @@ def _make_render_env(seed: int):
     return env
 
 
-def _worker_loop(conn, seed: int) -> None:
-    _log("worker starting")
+def _worker_loop(conn, seed: int, log_path: str = WORKER_LOG_PATH) -> None:
+    _log("worker starting", log_path)
     try:
         env = _make_render_env(seed)
-        _log("env created")
+        _log("env created", log_path)
         obs, _info = env.reset(seed=seed)
-        _log("env reset ok")
+        _log("env reset ok", log_path)
         frame = env.render()
-        _log(f"first render ok, frame shape={frame.shape}")
+        _log(f"first render ok, frame shape={frame.shape}", log_path)
         conn.send(("ready", obs, frame))
 
         while True:
@@ -110,7 +121,7 @@ def _worker_loop(conn, seed: int) -> None:
                 break
     except Exception:
         tb = traceback.format_exc()
-        _log(f"CRASHED:\n{tb}")
+        _log(f"CRASHED:\n{tb}", log_path)
         try:
             conn.send(("error", tb))
         except Exception:
@@ -125,11 +136,12 @@ class SimWorkerCrashed(RuntimeError):
 class SimWorker:
     """Owns a subprocess running the MuJoCo env; talks to it over a Pipe."""
 
-    def __init__(self, seed: int = 0) -> None:
+    def __init__(self, seed: int = 0, name: str = "") -> None:
+        self._log_path = _log_path(name)
         ctx = mp.get_context("spawn")
         self._parent_conn, child_conn = ctx.Pipe()
         self._process = ctx.Process(
-            target=_worker_loop, args=(child_conn, seed), daemon=True
+            target=_worker_loop, args=(child_conn, seed, self._log_path), daemon=True
         )
         self._process.start()
         _tag, self.obs, self.frame = self._recv()
@@ -140,7 +152,7 @@ class SimWorker:
         except EOFError as e:
             raise SimWorkerCrashed(
                 f"Render subprocess died unexpectedly (exitcode={self._process.exitcode}). "
-                f"See {WORKER_LOG_PATH} for details."
+                f"See {self._log_path} for details."
             ) from e
         if msg[0] == "error":
             raise SimWorkerCrashed(f"Render subprocess raised an exception:\n{msg[1]}")

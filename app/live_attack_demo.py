@@ -9,12 +9,19 @@ Run with:
 v1 scope: live render + attack controls (condition + magnitude/toggle) +
 step counter + end-of-episode success/fail readout.
 
-v2 (this file): a live metrics panel (distance-to-goal, C4 jerk/safety
+v2 scope: a live metrics panel (distance-to-goal, C4 jerk/safety
 indicators) and a classifier/recovery overlay (online failure-mode
-classifier's live p_fail, Recovery v4's trigger/blend-weight state).
-The overlay is telemetry only -- it does NOT wire Recovery v4's blended
-action into the executed action; the demo always executes the (possibly
-attacked) SAC+HER policy action, same as v1.
+classifier's live p_fail, Recovery v4's trigger/blend-weight state). The
+overlay was telemetry only -- it did not wire Recovery v4's blended action
+into the executed action.
+
+v3 (this file): a recovery-comparison demo. Two synchronized episodes run
+side by side from the same seed and the identical attack instance -- the
+raw SAC+HER policy (left) and SAC+HER + Recovery v4 CCAR (right, using
+recovery.recovery_v4.recovery_step to actually blend the action, not just
+display telemetry) -- plus an end-of-episode trustworthiness section that
+shows both this run's real outcome and the committed, statistically
+validated C1-C5 benchmark numbers for the selected condition.
 """
 
 import os
@@ -33,9 +40,11 @@ import config
 from envs.fetchpickandplace_env import make_env, distance_to_goal
 from policies.sac_her_policy import SACHerPolicy
 from evaluation.attack_dispatch import apply_sensor_attack, apply_action_attack
-from evaluation.causal_features import build_causal_features_online
 from evaluation.episode_runner import _pnp_spatial_fields
-from recovery.recovery_v4 import TriggerWeight, get_class_probs
+from recovery.recovery_v4 import (
+    TriggerWeight, ExpertState, recovery_step, EPSILON as RECOVERY_V4_EPSILON,
+)
+from attacks.sensor_attacks import apply_sensor_bias, shift_target, apply_object_pose_spoof
 from app.sim_worker import SimWorker, SimWorkerCrashed
 
 # Seed-fixed classifier/calibration artifacts (see CLAUDE.md section 10 --
@@ -43,6 +52,39 @@ from app.sim_worker import SimWorker, SimWorkerCrashed
 # must be named explicitly, same as run_multiseed_sweep.py's
 # --recovery-v4-classifier-dir convention).
 CLASSIFIER_SEEDFIX_DIR = "results/classifier_seedfix"
+
+# Committed Tier-1 CCAR benchmark (5 seeds x 30 episodes/seed, clean_2M
+# checkpoint) -- already has C1-C5 computed per (method, condition,
+# attack_level) via evaluation/metrics.py's add_trustworthiness_scores().
+# Used to ground the live comparison in the real, statistically validated
+# numbers rather than inventing a single-episode approximation of what is,
+# in evaluation/metrics.py, always a rate-based metric across many episodes.
+BENCHMARK_SUMMARY_PATH = "results/data_recovery_v4/phase6_summary_sac_her_pickandplace_clean_2M.csv"
+
+# A concrete, verified example of Recovery v4 flipping a failed episode
+# into a success in THIS demo specifically -- not a lucky guess, and NOT
+# simply copied from the committed episode CSV. Important nuance found
+# while building this feature: SimWorker calls env.render() after every
+# env.step() (needed for the live frame), and that render call measurably
+# perturbs MuJoCo's internal solver/contact warm-start state -- confirmed
+# by direct A/B (same seed/action stream, render() every step vs not)
+# changing a clean-policy action_delay episode from FAIL to SUCCESS. So a
+# seed's outcome in evaluation/episode_runner.py's headless batch eval (no
+# rendering) does not reliably predict its outcome in this rendered demo.
+# This example was found by brute-force seed search calling this exact
+# module's precompute_shared_attack_vectors (not a reimplementation --
+# two earlier passes of this search rolled their own vector handling and
+# produced false positives that did not reproduce live, once by discarding
+# apply_sensor_attack's returned vectors between steps, once by never
+# calling precompute_shared_attack_vectors at all) and confirmed live in a
+# real browser before being set here.
+SUGGESTED_EXAMPLE = {"condition": "goal_spoof_midep", "seed": 6}
+
+# FetchPickAndPlace-v4's action space is the standard Box(-1, 1, (4,))
+# (same convention already hardcoded in attacks/action_attacks.py's
+# clipping default). SimWorker's subprocess IPC protocol doesn't expose
+# env.action_space, so this is hardcoded to match rather than queried.
+ACTION_LOW, ACTION_HIGH = -1.0, 1.0
 
 # Conditions whose ATTACK_LEVELS/TRAIN_ATTACK_RANGES magnitude is a fixed 0.0
 # placeholder — i.e. structural/binary attacks, not magnitude-scaled ones.
@@ -64,15 +106,11 @@ BINARY_CONDITIONS = {
 # execution silently writes into a stale container snapshot and the whole
 # render pane goes blank permanently (confirmed reproducible at 0.05s
 # across repeated clean-server trials; confirmed NOT reproducible at
-# 0.1s-3.0s). 0.25s (4 Hz) keeps solid margin below that boundary. The FPS
-# slider's max is capped to match -- stepping faster than one tick allows
-# is impossible regardless of the slider, so the slider must not promise
-# a rate this mechanism can't sustain.
+# 0.1s-3.0s). 0.25s (4 Hz) keeps solid margin below that boundary.
 RENDER_TICK_SECONDS = 0.25
 
 # Playback speed is fixed, not user-adjustable -- RENDER_TICK_SECONDS (4 Hz)
-# is already the practical ceiling (see the docstring above), so a slider
-# that only ever usefully sits at its max was removed in favor of a constant.
+# is already the practical ceiling (see the docstring above).
 PLAYBACK_FPS = 4
 
 
@@ -90,7 +128,8 @@ def load_recovery_v4_artifacts():
 
     Loaded once and reused across the whole app lifetime (same rationale as
     load_policy) -- both are read-only, checkpoint-scoped to clean_2M (the
-    only model this demo runs), and safe to share across sessions.
+    only model this demo runs), and safe to share across sessions and
+    across both panes.
     """
     classifier_path = os.path.join(CLASSIFIER_SEEDFIX_DIR, "online_failure_classifier.pkl")
     calibration_path = os.path.join(CLASSIFIER_SEEDFIX_DIR, "recovery_v4_trigger_calibration.pkl")
@@ -101,226 +140,430 @@ def load_recovery_v4_artifacts():
     return classifier, calibration
 
 
+@st.cache_resource
+def load_benchmark_summary() -> pd.DataFrame:
+    return pd.read_csv(BENCHMARK_SUMMARY_PATH)
+
+
+def lookup_benchmark_row(df: pd.DataFrame, method: str, condition: str, attack_level: float):
+    """Nearest-attack_level row for (method, condition), or None if the
+    condition isn't in the committed benchmark at all. Nearest rather than
+    exact match since the live magnitude slider can, in principle, be
+    moved off the sweep's fixed calibrated value.
+    """
+    sub = df[(df["method"] == method) & (df["condition"] == condition)]
+    if sub.empty:
+        return None
+    idx = (sub["attack_level"] - attack_level).abs().idxmin()
+    return sub.loc[idx]
+
+
+class PaneState:
+    """Per-pane (clean vs recovery) episode state. Two instances live in
+    st.session_state (pane_clean, pane_recovery) and are mutated in place
+    across reruns/fragment ticks -- same pattern the v1/v2 single-pane
+    version used for its TriggerWeight instance.
+    """
+
+    def __init__(self, name: str, use_recovery: bool) -> None:
+        self.name = name
+        self.use_recovery = use_recovery
+        self.worker = None
+        self.obs = None
+        self.last_frame = None
+        self.step_count = 0
+        self.bias_vector = None
+        self.goal_offset = None
+        self.object_pose_offset = None
+        self.previous_action = None
+        self.prev_executed = None
+        self.step_history = []
+        self.done = False
+        self.success = None
+        self.worker_error = None
+        self.distance_to_goal_now = None
+        self.arm_jerk = 0.0
+        self.grip_jerk = 0.0
+        self.safety_violation_step = 0.0
+        # Recovery-pane-only fields -- left at these harmless defaults for
+        # the clean pane, which never populates them.
+        self.trigger = None
+        self.expert_state = None
+        self.class_probs = {}
+        self.p_fail = None
+        self.ema_pfail = 0.0
+        self.recovery_weight = 0.0
+        self.first_recovery_step = float("nan")
+
+
+def precompute_shared_attack_vectors(condition: str, obs, attack_level: float, seed: int):
+    """Draw the per-episode attack vector ONCE, so both panes are attacked
+    identically instead of each independently self-sampling.
+
+    apply_sensor_attack (evaluation/attack_dispatch.py) never threads a
+    seed down to the low-level attack functions, so two independent calls
+    -- one per pane -- would sample DIFFERENT bias_vector/goal_offset/
+    object_pose_offset even with the same episode seed, confounding the
+    clean-vs-recovery comparison with unrelated randomness. Fixed here by
+    calling the real attack functions directly (not apply_sensor_attack)
+    with an explicit seed, once, and reusing the result for both panes --
+    no changes to attacks/sensor_attacks.py or evaluation/attack_dispatch.py
+    (both explicitly documented as shared and already correct).
+
+    For goal_spoof_midep specifically: shift_step=None is passed here (not
+    GOAL_SPOOF_MIDEP_STEP) purely to force immediate sampling so a value
+    exists to seed both panes with. This does NOT skip the real onset
+    gating -- apply_sensor_attack's own per-step call (in step_pane) still
+    passes the real shift_step, and its return-value threading
+    (`if new_offset is not None: goal_offset = new_offset`) already
+    preserves a pre-seeded non-None goal_offset across the pre-step-60
+    None-returns untouched, so the mid-episode activation timing is
+    unaffected.
+    """
+    bias_vector = goal_offset = object_pose_offset = None
+    if condition == "sensor_bias":
+        _, bias_vector = apply_sensor_bias(obs, magnitude=attack_level, bias_vector=None, seed=seed)
+    elif condition in ("goal_spoof_immediate", "goal_spoof_midep"):
+        _, goal_offset = shift_target(
+            obs, shift_scale=attack_level, step=0, shift_step=None, goal_offset=None, seed=seed,
+        )
+    elif condition == "object_pose_spoof":
+        _, object_pose_offset = apply_object_pose_spoof(
+            obs, magnitude=attack_level, offset=None, seed=seed,
+        )
+    return bias_vector, goal_offset, object_pose_offset
+
+
 def init_state() -> None:
     if "initialized" in st.session_state:
         return
     ss = st.session_state
     ss.initialized = True
-    ss.worker = None
-    ss.obs = None
-    ss.step_count = 0
-    ss.bias_vector = None
-    ss.goal_offset = None
-    ss.object_pose_offset = None
-    ss.previous_action = None
-    ss.running = False
-    ss.done = False
-    ss.success = None
-    ss.last_frame = None
-    ss.last_step_time = 0.0
-    ss.worker_error = None
-    ss.prev_executed = None
-    ss.step_history = []
-    ss.trigger = None
-    ss.distance_to_goal_now = None
-    ss.arm_jerk = 0.0
-    ss.grip_jerk = 0.0
-    ss.safety_violation_step = 0.0
-    ss.class_probs = {}
-    ss.p_fail = None
-    ss.ema_pfail = 0.0
-    ss.recovery_weight = 0.0
-    reset_episode(seed=0)
-
-
-def reset_episode(seed: int) -> None:
-    ss = st.session_state
-    try:
-        if ss.get("worker") is None:
-            ss.worker = SimWorker(seed=seed)
-            ss.obs, ss.last_frame = ss.worker.obs, ss.worker.frame
-        else:
-            ss.obs, ss.last_frame = ss.worker.reset(seed)
-    except SimWorkerCrashed as e:
-        ss.worker = None
-        ss.worker_error = str(e)
-        ss.done = True
-        ss.running = False
-        return
-    ss.step_count = 0
-    ss.bias_vector = None
-    ss.goal_offset = None
-    ss.object_pose_offset = None
-    ss.previous_action = None
-    ss.done = False
-    ss.success = None
+    ss.pane_clean = PaneState(name="clean", use_recovery=False)
+    ss.pane_recovery = PaneState(name="recovery", use_recovery=True)
     ss.running = False
     ss.last_step_time = 0.0
-    ss.worker_error = None
-    ss.prev_executed = None
-    ss.step_history = []
-    _classifier, calibration = load_recovery_v4_artifacts()
-    ss.trigger = TriggerWeight(clean_pfail_p95=calibration["clean_2M"])
-    ss.distance_to_goal_now = distance_to_goal(ss.obs)
-    ss.arm_jerk = 0.0
-    ss.grip_jerk = 0.0
-    ss.safety_violation_step = 0.0
-    ss.class_probs = {}
-    ss.p_fail = None
-    ss.ema_pfail = 0.0
-    ss.recovery_weight = 0.0
+    reset_episode(seed=0, condition="clean", attack_level=0.0)
 
 
-def take_step(condition: str, attack_level: float) -> None:
+def reset_episode(seed: int, condition: str, attack_level: float) -> None:
     ss = st.session_state
-    if ss.done:
+    for pane in (ss.pane_clean, ss.pane_recovery):
+        try:
+            if pane.worker is None:
+                pane.worker = SimWorker(seed=seed, name=pane.name)
+                pane.obs, pane.last_frame = pane.worker.obs, pane.worker.frame
+            else:
+                pane.obs, pane.last_frame = pane.worker.reset(seed)
+            pane.worker_error = None
+        except SimWorkerCrashed as e:
+            pane.worker = None
+            pane.worker_error = str(e)
+            pane.done = True
+            continue
+
+        pane.step_count = 0
+        pane.previous_action = None
+        pane.prev_executed = None
+        pane.step_history = []
+        pane.done = False
+        pane.success = None
+        pane.distance_to_goal_now = distance_to_goal(pane.obs)
+        pane.arm_jerk = 0.0
+        pane.grip_jerk = 0.0
+        pane.safety_violation_step = 0.0
+
+        if pane.use_recovery:
+            _classifier, calibration = load_recovery_v4_artifacts()
+            pane.trigger = TriggerWeight(clean_pfail_p95=calibration["clean_2M"])
+            pane.expert_state = ExpertState()
+            pane.class_probs = {}
+            pane.p_fail = None
+            pane.ema_pfail = 0.0
+            pane.recovery_weight = 0.0
+            pane.first_recovery_step = float("nan")
+
+    ss.running = False
+    ss.last_step_time = 0.0
+
+    # Shared attack instance -- see precompute_shared_attack_vectors's
+    # docstring. Falls back to whichever pane's worker is alive if one
+    # crashed at reset; both started from the same seed so either obs
+    # works as the sampling basis.
+    seed_obs = None
+    if ss.pane_clean.worker_error is None:
+        seed_obs = ss.pane_clean.obs
+    elif ss.pane_recovery.worker_error is None:
+        seed_obs = ss.pane_recovery.obs
+
+    bias_vector = goal_offset = object_pose_offset = None
+    if seed_obs is not None:
+        bias_vector, goal_offset, object_pose_offset = precompute_shared_attack_vectors(
+            condition, seed_obs, attack_level, seed
+        )
+    for pane in (ss.pane_clean, ss.pane_recovery):
+        pane.bias_vector = bias_vector
+        pane.goal_offset = goal_offset
+        pane.object_pose_offset = object_pose_offset
+
+
+def step_pane(pane: PaneState, condition: str, attack_level: float) -> None:
+    """One step for a single pane. Shared by both the clean and recovery
+    panes -- the only behavioral difference is the recovery-blend block,
+    gated on pane.use_recovery. Mirrors evaluation/episode_runner.py's
+    exact ordering: sensor attack -> policy -> action attack -> recovery
+    blend (if applicable) -> C4 jerk on the post-blend action -> env.step.
+    """
+    if pane.done or pane.worker is None:
         return
 
-    policy_obs, ss.bias_vector, ss.goal_offset, ss.object_pose_offset = apply_sensor_attack(
-        condition, ss.obs, ss.step_count, ss.bias_vector, ss.goal_offset,
-        attack_level=attack_level, object_pose_offset=ss.object_pose_offset,
+    policy_obs, pane.bias_vector, pane.goal_offset, pane.object_pose_offset = apply_sensor_attack(
+        condition, pane.obs, pane.step_count, pane.bias_vector, pane.goal_offset,
+        attack_level=attack_level, object_pose_offset=pane.object_pose_offset,
     )
 
-    intended_action = np.asarray(ss.policy(None, policy_obs), dtype=np.float32)
+    intended_action = np.asarray(st.session_state.policy(None, policy_obs), dtype=np.float32)
 
     executed_action = apply_action_attack(
-        condition, intended_action, ss.previous_action, attack_level=attack_level,
+        condition, intended_action, pane.previous_action, attack_level=attack_level,
     )
 
-    ss.previous_action = (
+    pane.previous_action = (
         intended_action.copy() if condition == "action_delay" else executed_action.copy()
     )
 
+    # -- Recovery v4 blend (recovery pane only). Uses raw obs (pane.obs,
+    # pre-sensor-attack) and step_history built from steps [0, step_count-1]
+    # only -- recovery_step's own step-0 guard handles the first step. ------
+    if pane.use_recovery:
+        classifier, _calibration = load_recovery_v4_artifacts()
+        step_history_df = pd.DataFrame(pane.step_history)
+        executed_action, pane.class_probs, pane.recovery_weight = recovery_step(
+            policy_action=executed_action,
+            obs=pane.obs,
+            step_history_df=step_history_df,
+            classifier_artifact=classifier,
+            trigger=pane.trigger,
+            expert_state=pane.expert_state,
+            step=pane.step_count,
+        )
+        executed_action = np.clip(executed_action, ACTION_LOW, ACTION_HIGH).astype(np.float32)
+        pane.ema_pfail = pane.trigger.ema_pfail
+        pane.p_fail = 1.0 - pane.class_probs["success"] if pane.class_probs else None
+        if pane.recovery_weight >= RECOVERY_V4_EPSILON and np.isnan(pane.first_recovery_step):
+            pane.first_recovery_step = float(pane.step_count)
+
     # -- C4 jerk metric (per-channel split, matches evaluation/episode_runner.py
-    # exactly -- always the last *executed* action, never previous_action,
-    # per CLAUDE.md section 8) -----------------------------------------------
-    if ss.prev_executed is not None:
-        ss.arm_jerk = float(np.linalg.norm(executed_action[:3] - ss.prev_executed[:3]))
-        ss.grip_jerk = float(abs(executed_action[3] - ss.prev_executed[3]))
-        ss.safety_violation_step = float(
-            ss.arm_jerk > config.SAFETY_ARM_JERK_THRESHOLD
-            or ss.grip_jerk > config.SAFETY_GRIPPER_JERK_THRESHOLD
+    # exactly -- always the last *executed* action (post-recovery-blend for
+    # the recovery pane), never previous_action, per CLAUDE.md section 8) ---
+    if pane.prev_executed is not None:
+        pane.arm_jerk = float(np.linalg.norm(executed_action[:3] - pane.prev_executed[:3]))
+        pane.grip_jerk = float(abs(executed_action[3] - pane.prev_executed[3]))
+        pane.safety_violation_step = float(
+            pane.arm_jerk > config.SAFETY_ARM_JERK_THRESHOLD
+            or pane.grip_jerk > config.SAFETY_GRIPPER_JERK_THRESHOLD
         )
     else:
-        ss.arm_jerk = 0.0
-        ss.grip_jerk = 0.0
-        ss.safety_violation_step = 0.0
+        pane.arm_jerk = 0.0
+        pane.grip_jerk = 0.0
+        pane.safety_violation_step = 0.0
 
-    # -- Recovery v4 telemetry (display only -- does NOT alter executed_action).
-    # Uses raw obs (ss.obs, pre-sensor-attack) and step_history built from
-    # steps [0, step_count-1] only -- same causal discipline as
-    # recovery_v4.recovery_step's own step-0 guard. -------------------------
-    classifier, _calibration = load_recovery_v4_artifacts()
-    if ss.step_count == 0 or len(ss.step_history) == 0:
-        ss.class_probs = {}
-        ss.p_fail = None
-        ss.recovery_weight = 0.0
-    else:
-        history_df = pd.DataFrame(ss.step_history)
-        feature_vec = build_causal_features_online(history_df)
-        x = np.array([[feature_vec[c] for c in classifier["feature_cols"]]])
-        ss.class_probs = get_class_probs(classifier["model"], x)
-        ss.recovery_weight = ss.trigger.update(ss.class_probs["success"])
-        ss.p_fail = 1.0 - ss.class_probs["success"]
-    ss.ema_pfail = ss.trigger.ema_pfail
-
-    ss.prev_executed = executed_action.copy()
+    pane.prev_executed = executed_action.copy()
 
     try:
-        ss.obs, reward, terminated, truncated, info, ss.last_frame = ss.worker.step(
+        pane.obs, reward, terminated, truncated, info, pane.last_frame = pane.worker.step(
             executed_action
         )
     except SimWorkerCrashed as e:
-        ss.worker = None
-        ss.worker_error = str(e)
-        ss.done = True
-        ss.running = False
+        pane.worker = None
+        pane.worker_error = str(e)
+        pane.done = True
         return
 
-    ss.distance_to_goal_now = distance_to_goal(ss.obs)
+    pane.distance_to_goal_now = distance_to_goal(pane.obs)
     is_success = float(info.get("is_success", 0.0))
-    spatial = _pnp_spatial_fields(ss.obs, ss.goal_offset)
-    ss.step_history.append({
-        "timestep": ss.step_count,
+    spatial = _pnp_spatial_fields(pane.obs, pane.goal_offset)
+    pane.step_history.append({
+        "timestep": pane.step_count,
         "reward": float(reward),
         "is_success": is_success,
         "action_norm": float(np.linalg.norm(executed_action)),
         "intended_action_norm": float(np.linalg.norm(intended_action)),
-        "safety_violation": ss.safety_violation_step,
+        "safety_violation": pane.safety_violation_step,
         **spatial,
     })
 
-    ss.step_count += 1
+    pane.step_count += 1
 
     if terminated or truncated:
-        ss.done = True
-        ss.running = False
-        ss.success = bool(is_success)
+        pane.done = True
+        pane.success = bool(is_success)
 
 
-@st.fragment(run_every=RENDER_TICK_SECONDS)
-def render_fragment(condition: str, attack_level: float, fps: int, render_slot, metrics_slot) -> None:
-    """Live render + telemetry. Reruns on its own timer (see
-    RENDER_TICK_SECONDS) without rerunning the rest of the page — this is
-    what keeps auto-play from flickering the whole app and resetting scroll
-    position on every step. render_slot/metrics_slot are `st.container()`s
-    created once in main() (one next to the render pane, one next to the
-    controls) so this single fragment updates both locations on every tick
-    instead of stacking metrics below a full-width image.
-    """
-    ss = st.session_state
-
-    if ss.running and not ss.done:
-        now = time.monotonic()
-        if now - ss.last_step_time >= 1.0 / fps:
-            take_step(condition, attack_level)
-            ss.last_step_time = now
-
+def render_pane(pane: PaneState, title: str, render_slot, metrics_slot, show_classifier: bool) -> None:
     with render_slot:
-        if ss.worker_error:
-            st.error(f"Render subprocess crashed: {ss.worker_error}")
+        st.markdown(f"**{title}**")
+        if pane.worker_error:
+            st.error(f"Render subprocess crashed: {pane.worker_error}")
         else:
             # Fixed display width, well under the source 960x960 render --
-            # shrinks the on-page footprint without touching render quality
-            # (the browser downsamples from the full-resolution frame).
-            st.image(ss.last_frame, channels="rgb", width=560)
-            st.write(f"Step {ss.step_count} / {config.MAX_EPISODE_STEPS_PICKANDPLACE}")
-            if ss.done:
-                if ss.success:
-                    st.success("Episode SUCCESS")
+            # shrinks the on-page footprint (two panes side by side) without
+            # touching render quality (the browser downsamples the frame).
+            st.image(pane.last_frame, channels="rgb", width=420)
+            st.write(f"Step {pane.step_count} / {config.MAX_EPISODE_STEPS_PICKANDPLACE}")
+            if pane.done:
+                if pane.success:
+                    st.success("SUCCESS")
                 else:
-                    st.error("Episode FAILURE")
+                    st.error("FAILURE")
 
-    if ss.worker_error:
+    if pane.worker_error:
         return
 
     with metrics_slot:
-        st.subheader("Live metrics")
-        st.metric("Distance to goal", f"{ss.distance_to_goal_now:.3f} m")
+        st.metric("Distance to goal", f"{pane.distance_to_goal_now:.3f} m")
         jcol1, jcol2 = st.columns(2)
-        jcol1.metric("Arm jerk", f"{ss.arm_jerk:.2f}")
-        jcol2.metric("Grip jerk", f"{ss.grip_jerk:.2f}")
-        if ss.safety_violation_step:
+        jcol1.metric("Arm jerk", f"{pane.arm_jerk:.2f}")
+        jcol2.metric("Grip jerk", f"{pane.grip_jerk:.2f}")
+        if pane.safety_violation_step:
             st.warning("C4 safety violation this step")
         else:
             st.caption("No C4 safety violation this step")
 
-        st.divider()
-        st.subheader("Classifier / Recovery v4")
-        if ss.class_probs:
-            predicted_label = max(ss.class_probs, key=ss.class_probs.get)
-            st.write(f"Predicted: **{predicted_label}** (p={ss.class_probs[predicted_label]:.2f})")
-            st.progress(min(max(ss.p_fail, 0.0), 1.0), text=f"p_fail = {ss.p_fail:.3f}")
-            st.caption(f"EMA(p_fail) = {ss.ema_pfail:.3f}")
-            st.progress(
-                min(max(ss.recovery_weight, 0.0), 1.0),
-                text=f"Recovery v4 blend weight w = {ss.recovery_weight:.3f}",
+        if show_classifier:
+            st.divider()
+            st.markdown("**Classifier / Recovery v4**")
+            if pane.class_probs:
+                predicted_label = max(pane.class_probs, key=pane.class_probs.get)
+                st.write(f"Predicted: **{predicted_label}** (p={pane.class_probs[predicted_label]:.2f})")
+                st.progress(min(max(pane.p_fail, 0.0), 1.0), text=f"p_fail = {pane.p_fail:.3f}")
+                st.caption(f"EMA(p_fail) = {pane.ema_pfail:.3f}")
+                st.progress(
+                    min(max(pane.recovery_weight, 0.0), 1.0),
+                    text=f"Recovery v4 blend weight w = {pane.recovery_weight:.3f}",
+                )
+            else:
+                st.caption(
+                    "Classifier telemetry needs 1 step of history — available "
+                    "from step 2 onward."
+                )
+
+
+def render_trustworthiness_section(slot, condition: str, attack_level: float) -> None:
+    ss = st.session_state
+    pc, pr = ss.pane_clean, ss.pane_recovery
+
+    with slot:
+        if not (pc.done and pr.done):
+            st.caption("Trustworthiness comparison appears here once both episodes finish.")
+            return
+
+        st.subheader("Trustworthiness — this run")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**Clean policy**")
+            st.write("Success" if pc.success else "Failure")
+            st.caption(f"Final distance to goal: {pc.distance_to_goal_now:.3f} m")
+            n_violations = int(sum(row["safety_violation"] for row in pc.step_history))
+            st.caption(f"C4 safety violations: {n_violations} step(s)")
+        with c2:
+            st.markdown("**Policy + Recovery v4**")
+            st.write("Success" if pr.success else "Failure")
+            st.caption(f"Final distance to goal: {pr.distance_to_goal_now:.3f} m")
+            n_violations = int(sum(row["safety_violation"] for row in pr.step_history))
+            st.caption(f"C4 safety violations: {n_violations} step(s)")
+            if not np.isnan(pr.first_recovery_step):
+                st.caption(f"Recovery first triggered at step {int(pr.first_recovery_step)}")
+            else:
+                st.caption("Recovery never triggered above threshold this episode")
+
+        if pc.success and not pr.success:
+            st.warning(
+                "Recovery made this episode worse — the raw policy succeeded, "
+                "recovery did not. A real, documented possibility (see "
+                "RECOVERY_V4.md's weak spots), not a bug."
             )
+        elif not pc.success and pr.success:
+            st.success(
+                "Recovery saved this episode — the raw policy failed, "
+                "recovery succeeded."
+            )
+        elif pc.success and pr.success:
+            st.info("Both succeeded — no visible difference this episode.")
         else:
-            st.caption(
-                "Classifier telemetry needs 1 step of history — available "
-                "from step 2 onward."
+            st.info("Both failed — recovery did not save this episode.")
+
+        st.divider()
+        st.markdown("**How this compares to the full benchmark**")
+        st.caption(
+            "From the committed 5-seed × 30-episode-per-seed evaluation "
+            "(results/data_recovery_v4), not just this one run."
+        )
+        bdf = load_benchmark_summary()
+        base_row = lookup_benchmark_row(bdf, "sac_her", condition, attack_level)
+        rec_row = lookup_benchmark_row(bdf, "sac_her_recovery_v4", condition, attack_level)
+        if base_row is None or rec_row is None:
+            st.caption("No committed benchmark row for this condition/magnitude.")
+        else:
+            table = pd.DataFrame(
+                {
+                    "sac_her": [
+                        base_row["reliability_score"], base_row["safety_score"],
+                        base_row["recovery_score"], base_row["trustworthiness_score_weighted"],
+                    ],
+                    "sac_her_recovery_v4": [
+                        rec_row["reliability_score"], rec_row["safety_score"],
+                        rec_row["recovery_score"], rec_row["trustworthiness_score_weighted"],
+                    ],
+                },
+                index=["C1 reliability", "C4 safety", "C5 recovery", "Weighted trustworthiness"],
             )
+            st.dataframe(table.style.format("{:.3f}"))
+
+
+@st.fragment(run_every=RENDER_TICK_SECONDS)
+def render_fragment(
+    condition: str, attack_level: float, fps: int,
+    render_slot_clean, metrics_slot_clean,
+    render_slot_recovery, metrics_slot_recovery,
+    trust_slot,
+) -> None:
+    """Live render + telemetry for both panes. Reruns on its own timer (see
+    RENDER_TICK_SECONDS) without rerunning the rest of the page. All slots
+    are `st.container()`s created once in main() so this single fragment
+    updates every location on every tick, keeping both panes in lockstep.
+    """
+    ss = st.session_state
+    pc, pr = ss.pane_clean, ss.pane_recovery
+
+    if ss.running and not (pc.done and pr.done):
+        now = time.monotonic()
+        if now - ss.last_step_time >= 1.0 / fps:
+            if not pc.done:
+                step_pane(pc, condition, attack_level)
+            if not pr.done:
+                step_pane(pr, condition, attack_level)
+            ss.last_step_time = now
+            if pc.done and pr.done:
+                ss.running = False
+
+    # A fragment auto-tick can occasionally land in the same instant as a
+    # full-page rerun triggered by a button click (Reset/Start/etc, which
+    # live outside this fragment) -- the same race RENDER_TICK_SECONDS is
+    # calibrated against (see its docstring above). With five containers
+    # now written per tick (two render slots, two metrics slots, one
+    # trustworthiness slot) instead of v1/v2's two, Streamlit's container
+    # reservation check can raise StreamlitAPIException on the losing
+    # side of that race instead of just silently skipping a frame. Caught
+    # here so a rare collision degrades to "this tick renders nothing"
+    # (the next tick, ~0.25s later, always succeeds) rather than an
+    # uncaught exception.
+    try:
+        render_pane(pc, "Clean policy (no recovery)", render_slot_clean, metrics_slot_clean, show_classifier=False)
+        render_pane(pr, "Policy + Recovery v4", render_slot_recovery, metrics_slot_recovery, show_classifier=True)
+        render_trustworthiness_section(trust_slot, condition, attack_level)
+    except st.errors.StreamlitAPIException:
+        pass
 
 
 def main() -> None:
@@ -328,12 +571,25 @@ def main() -> None:
     init_state()
     st.session_state.policy = load_policy()
 
-    st.title("SAC+HER (clean_2M) — Live Attack Demo")
+    st.title("SAC+HER (clean_2M) — Recovery Comparison Demo")
+    st.caption(
+        "Two synchronized episodes, same seed and identical attack instance: "
+        "the raw SAC+HER policy on the left, SAC+HER + Recovery v4 (CCAR) on "
+        "the right. Try condition "
+        f"'{SUGGESTED_EXAMPLE['condition']}' with seed {SUGGESTED_EXAMPLE['seed']} "
+        "(the default seed — just switch the condition and hit Reset) for a "
+        "verified example of recovery saving an otherwise-failed episode — "
+        "most seeds show no difference, since Recovery v4's real aggregate "
+        "benefit on this checkpoint is a small lift on a couple of "
+        "conditions, not a dramatic per-episode effect. Note: rendering each "
+        "frame for display measurably perturbs MuJoCo's physics state, so a "
+        "given seed's outcome here can differ from the same seed in the "
+        "headless batch evaluation results/data_recovery_v4 was built from."
+    )
 
-    col_render, col_controls = st.columns([1, 1])
-
-    with col_controls:
-        st.subheader("Attack controls")
+    st.subheader("Attack controls")
+    ctrl_cols = st.columns(2)
+    with ctrl_cols[0]:
         condition = st.selectbox("Attack condition", config.ALL_CONDITIONS, key="condition")
 
         attack_level = 0.0
@@ -350,34 +606,51 @@ def main() -> None:
                 "Magnitude", min_value=float(low), max_value=float(high),
                 value=float(default), key=f"mag_{condition}",
             )
-
+    with ctrl_cols[1]:
+        seed = st.number_input("Episode seed", value=0, step=1, key="seed_input")
         st.caption(
             "Changing condition/magnitude mid-episode takes effect from the "
             "next step onward (no Reset required) — a known v1 simplification, "
-            "not a bug."
+            "not a bug. Both panes always receive an identical attack instance "
+            "for a fair comparison."
         )
 
-        seed = st.number_input("Episode seed", value=0, step=1, key="seed_input")
-
-        st.divider()
-        metrics_slot = st.container()
-
-    with col_render:
-        render_slot = st.container()
-
-        st.subheader("Playback")
+    st.subheader("Playback")
+    pb_col, _spacer = st.columns([1, 3])
+    with pb_col:
+        both_done = st.session_state.pane_clean.done and st.session_state.pane_recovery.done
         prow1 = st.columns(2)
         prow2 = st.columns(2)
-        if prow1[0].button("Start", disabled=st.session_state.done, width="stretch"):
+        if prow1[0].button("Start", disabled=both_done, width="stretch"):
             st.session_state.running = True
         if prow1[1].button("Pause", width="stretch"):
             st.session_state.running = False
-        if prow2[0].button("Step", disabled=st.session_state.done, width="stretch"):
-            take_step(condition, attack_level)
+        if prow2[0].button("Step", disabled=both_done, width="stretch"):
+            if not st.session_state.pane_clean.done:
+                step_pane(st.session_state.pane_clean, condition, attack_level)
+            if not st.session_state.pane_recovery.done:
+                step_pane(st.session_state.pane_recovery, condition, attack_level)
         if prow2[1].button("Reset", width="stretch"):
-            reset_episode(int(seed))
+            reset_episode(int(seed), condition, attack_level)
 
-    render_fragment(condition, attack_level, PLAYBACK_FPS, render_slot, metrics_slot)
+    st.divider()
+
+    pane_cols = st.columns(2)
+    with pane_cols[0]:
+        render_slot_clean = st.container()
+        metrics_slot_clean = st.container()
+    with pane_cols[1]:
+        render_slot_recovery = st.container()
+        metrics_slot_recovery = st.container()
+
+    trust_slot = st.container()
+
+    render_fragment(
+        condition, attack_level, PLAYBACK_FPS,
+        render_slot_clean, metrics_slot_clean,
+        render_slot_recovery, metrics_slot_recovery,
+        trust_slot,
+    )
 
 
 if __name__ == "__main__":

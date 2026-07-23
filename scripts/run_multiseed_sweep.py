@@ -76,6 +76,9 @@ _RECOVERY_VERSION = {
     "sac_her_recovery_v4_hx":  "v4_hx",
     "sac_her_recovery_v4_hx2": "v4_hx2",
     "sac_her_recovery_v4_hx3": "v4_hx3",
+    "sac_her_recovery_v4_hx4": "v4_hx4",
+    "sac_her_recovery_v4_hx5": "v4_hx5",
+    "sac_her_recovery_v4_hx6": "v4_hx6",
 }
 
 
@@ -85,8 +88,10 @@ def _layer(method: str, condition: str) -> str:
     if method == "sac_her_recovery_v2":
         return "B2"
     if method in {"sac_her_recovery_v4", "sac_her_recovery_v4_hx",
-                  "sac_her_recovery_v4_hx2", "sac_her_recovery_v4_hx3"}:
-        return "B4"  # v4_hx/v4_hx2/v4_hx3 are same-layer variants of v4, not new benchmark tiers
+                  "sac_her_recovery_v4_hx2", "sac_her_recovery_v4_hx3",
+                  "sac_her_recovery_v4_hx4", "sac_her_recovery_v4_hx5",
+                  "sac_her_recovery_v4_hx6"}:
+        return "B4"  # v4_hx/v4_hx2/v4_hx3/v4_hx4/v4_hx5/v4_hx6 are same-layer variants of v4
     return "B3"  # sac_her_recovery_v3
 
 
@@ -168,14 +173,16 @@ def _parse_args():
         metavar="METHOD",
         choices=["sac_her", "sac_her_recovery_v2", "sac_her_recovery_v3",
                  "sac_her_recovery_v4", "sac_her_recovery_v4_hx", "sac_her_recovery_v4_hx2",
-                 "sac_her_recovery_v4_hx3"],
+                 "sac_her_recovery_v4_hx3", "sac_her_recovery_v4_hx4", "sac_her_recovery_v4_hx5",
+                 "sac_her_recovery_v4_hx6"],
         help=(
             "Methods to evaluate (space-separated). "
             "Default: DEFAULT_METHODS from config.py (sac_her, "
             "recovery_v2, recovery_v3 -- excludes all sac_her_recovery_v4* "
             "variants so the bare command stays reproducible). "
-            "Pass --methods sac_her_recovery_v4 (or _hx / _hx2 / _hx3) explicitly to "
-            "opt in; all four require results/classifier_seedfix/online_failure_classifier.pkl "
+            "Pass --methods sac_her_recovery_v4 (or _hx / _hx2 / _hx3 / _hx4 / _hx5 / _hx6) "
+            "explicitly to opt in; all seven require "
+            "results/classifier_seedfix/online_failure_classifier.pkl "
             "and recovery_v4_trigger_calibration.pkl to exist and are only "
             "calibrated for the clean_2M PickAndPlace checkpoint "
             "(--recovery-v4-checkpoint). sac_her_recovery_v4_hx additionally "
@@ -185,7 +192,20 @@ def _parse_args():
             "additionally requires results/classifier_level4/level4_classifier.pkl "
             "(see recovery/recovery_v4_hx2.py); sac_her_recovery_v4_hx3 additionally "
             "re-gates relocalization_expert on Level 4's perception_state signal "
-            "(same level4_classifier.pkl requirement as hx2, see recovery/recovery_v4_hx3.py). "
+            "(same level4_classifier.pkl requirement as hx2, see recovery/recovery_v4_hx3.py); "
+            "sac_her_recovery_v4_hx4 instead fully remaps spoofed_goal onto "
+            "transport_expert and relocalization_expert onto Level 4's perception_state "
+            "signal (same level4_classifier.pkl requirement, see recovery/recovery_v4_hx4.py; "
+            "not combined with hx3, which targets a different, already-closed null result); "
+            "sac_her_recovery_v4_hx5 instead keeps hx2's mixture unchanged and speeds up the "
+            "trigger's EMA on the rising (new-failure) side only, globally (same "
+            "level4_classifier.pkl requirement, see recovery/recovery_v4_hx5.py; not combined "
+            "with hx4, which also showed no effect); sac_her_recovery_v4_hx6 keeps hx2's mixture "
+            "unchanged and reuses hx5's fast-attack EMA idea but gates it on Level 4 confidently "
+            "predicting perception_state/goal_manipulation, so it cannot touch the "
+            "grip_state_falsification (action_actuation) pathway hx5's global speed-up regressed "
+            "(same level4_classifier.pkl requirement, see recovery/recovery_v4_hx6.py; not "
+            "combined with hx5, which this supersedes as the trigger-speed variant). "
             "Example: --methods sac_her"
         ),
     )
@@ -320,7 +340,9 @@ def main() -> None:
     level4_classifier = None
     if any(m in methods for m in
            ("sac_her_recovery_v4", "sac_her_recovery_v4_hx",
-            "sac_her_recovery_v4_hx2", "sac_her_recovery_v4_hx3")):
+            "sac_her_recovery_v4_hx2", "sac_her_recovery_v4_hx3",
+            "sac_her_recovery_v4_hx4", "sac_her_recovery_v4_hx5",
+            "sac_her_recovery_v4_hx6")):
         import pickle
         from config import CLASSIFIER_DIR as _DEFAULT_CLASSIFIER_DIR
         v4_classifier_dir = (
@@ -352,7 +374,9 @@ def main() -> None:
                 f"(available: {list(recovery_v4_calibration.keys())})"
             )
 
-    if "sac_her_recovery_v4_hx2" in methods or "sac_her_recovery_v4_hx3" in methods:
+    if any(m in methods for m in
+           ("sac_her_recovery_v4_hx2", "sac_her_recovery_v4_hx3", "sac_her_recovery_v4_hx4",
+            "sac_her_recovery_v4_hx5", "sac_her_recovery_v4_hx6")):
         level4_path = "results/classifier_level4/level4_classifier.pkl"
         print(f"[sweep] Loading Level 4 classifier artifact:\n        {level4_path}")
         with open(level4_path, "rb") as f:

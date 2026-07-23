@@ -87,6 +87,9 @@ ALL_METHODS = [
     "sac_her_recovery_v4_hx",
     "sac_her_recovery_v4_hx2",
     "sac_her_recovery_v4_hx3",
+    "sac_her_recovery_v4_hx4",
+    "sac_her_recovery_v4_hx5",
+    "sac_her_recovery_v4_hx6",
 ]
 
 DEFAULT_METHODS = [
@@ -423,6 +426,36 @@ STAGE_EXPERT_COMPAT = {
 # constants above.
 LEVEL4_ACTION_ACTUATION_DOWNWEIGHT = 0.3   # multiplier on final blend weight w
 LEVEL4_CONFIDENT_THRESH = 0.5              # min level4 max-class-prob to apply it
+
+# ---------------------------------------------------------------------------
+# Recovery v4-HX5: fast-attack/slow-release trigger EMA, layered on top of
+# v4-HX2's mixture (mentor-directed goal-spoof investigation, 2026-07-22; see
+# recovery/recovery_v4_hx5.py). recovery_v4.py's TriggerWeight.update() uses a
+# single symmetric EMA (alpha=DEFAULT_ALPHA~=0.05, ~20-step time constant) --
+# confirmed via hx4's step logs to take 40-60+ steps to reach even w~=0.3-0.5
+# on goal_spoof_immediate/midep, vs. recovery_v3's 3-10 step trigger + full
+# (unblended) authority once triggered. RECOVERY_V4_HX5_ATTACK_ALPHA_MULTIPLIER
+# speeds up the EMA only on the rising (p_fail > ema_pfail) side, leaving the
+# original alpha for the falling side unchanged -- so the carefully-tuned
+# clean-episode decay behavior (Phase 5b, RECOVERY_V4.md section 2.6) is not
+# touched, only how fast the trigger reacts to a NEW sustained failure signal.
+# PROVISIONAL / uncalibrated (chosen to bring the ~20-step time constant down
+# to ~5 steps, roughly matching v3's trigger speed) -- same status as the
+# other Recovery v4-HX* constants above; empirically checked via the standard
+# do-no-harm audit for clean-episode side effects, not separately calibrated.
+RECOVERY_V4_HX5_ATTACK_ALPHA_MULTIPLIER = 4.0
+
+# ---------------------------------------------------------------------------
+# Recovery v4-HX6: Level-4-gated version of hx5's fast-attack trigger EMA
+# (mentor-directed continuation of the trigger-speed work, 2026-07-22; see
+# recovery/recovery_v4_hx6.py). hx5 applied RECOVERY_V4_HX5_ATTACK_ALPHA_MULTIPLIER
+# globally and showed a soft regression on the grip_state_falsification win;
+# hx6 reuses the SAME multiplier value (never shown to be wrong in magnitude,
+# only in scope) but only fires it when Level 4 confidently predicts
+# perception_state/goal_manipulation (LEVEL4_CONFIDENT_THRESH, reused from
+# the hx2 down-weight gate) -- the families the ramp-lag investigation
+# actually targeted. No new numeric constant needed.
+# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # Optional dependency flags

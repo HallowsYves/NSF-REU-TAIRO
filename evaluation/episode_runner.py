@@ -203,14 +203,19 @@ def run_episode(
                             scoped to clean_2M only; see RECOVERY_V4.md
                             section 2.6). Only meaningful when
                             method in {"sac_her_recovery_v4", "sac_her_recovery_v4_hx",
-                            "sac_her_recovery_v4_hx2", "sac_her_recovery_v4_hx3"}.
+                            "sac_her_recovery_v4_hx2", "sac_her_recovery_v4_hx3",
+                            "sac_her_recovery_v4_hx4", "sac_her_recovery_v4_hx5",
+                            "sac_her_recovery_v4_hx6"}.
         level4_classifier: Required when method in {"sac_her_recovery_v4_hx2",
-                            "sac_her_recovery_v4_hx3"}. The loaded
+                            "sac_her_recovery_v4_hx3", "sac_her_recovery_v4_hx4",
+                            "sac_her_recovery_v4_hx5", "sac_her_recovery_v4_hx6"}.
+                            The loaded
                             results/classifier_level4/level4_classifier.pkl
                             dict ({'model', 'feature_cols', 'label_order', ...}).
                             Second classifier artifact, distinct from
-                            recovery_v4_classifier -- see recovery/recovery_v4_hx2.py
-                            and recovery/recovery_v4_hx3.py.
+                            recovery_v4_classifier -- see recovery/recovery_v4_hx2.py,
+                            recovery/recovery_v4_hx3.py, recovery/recovery_v4_hx4.py,
+                            recovery/recovery_v4_hx5.py, and recovery/recovery_v4_hx6.py.
 
     Returns:
         Tuple of (EpisodeResult, step_log_DataFrame).
@@ -218,11 +223,17 @@ def run_episode(
     # Recovery version is encoded in the method name — derive it here.
     _use_recovery = method in {"sac_her_recovery_v2", "sac_her_recovery_v3",
                                 "sac_her_recovery_v4", "sac_her_recovery_v4_hx",
-                                "sac_her_recovery_v4_hx2", "sac_her_recovery_v4_hx3"}
+                                "sac_her_recovery_v4_hx2", "sac_her_recovery_v4_hx3",
+                                "sac_her_recovery_v4_hx4", "sac_her_recovery_v4_hx5",
+                                "sac_her_recovery_v4_hx6"}
     _use_recovery_v4 = method in {"sac_her_recovery_v4", "sac_her_recovery_v4_hx",
-                                   "sac_her_recovery_v4_hx2", "sac_her_recovery_v4_hx3"}
-    # Both hx2 and hx3 need level4_classifier_artifact passed into recovery_step.
-    _needs_level4 = method in {"sac_her_recovery_v4_hx2", "sac_her_recovery_v4_hx3"}
+                                   "sac_her_recovery_v4_hx2", "sac_her_recovery_v4_hx3",
+                                   "sac_her_recovery_v4_hx4", "sac_her_recovery_v4_hx5",
+                                   "sac_her_recovery_v4_hx6"}
+    # hx2 through hx6 all need level4_classifier_artifact passed into recovery_step.
+    _needs_level4 = method in {"sac_her_recovery_v4_hx2", "sac_her_recovery_v4_hx3",
+                                "sac_her_recovery_v4_hx4", "sac_her_recovery_v4_hx5",
+                                "sac_her_recovery_v4_hx6"}
     if _use_recovery_v4:
         from recovery.recovery_v4 import TriggerWeight, ExpertState, EPSILON as EPSILON_V4
         if method == "sac_her_recovery_v4_hx2":
@@ -238,6 +249,30 @@ def run_episode(
             if level4_classifier is None:
                 raise ValueError(
                     "run_episode: method='sac_her_recovery_v4_hx3' requires "
+                    "level4_classifier to be loaded once by the caller and "
+                    "passed in, in addition to recovery_v4_classifier."
+                )
+        elif method == "sac_her_recovery_v4_hx4":
+            from recovery.recovery_v4_hx4 import recovery_step_hx4 as recovery_step
+            if level4_classifier is None:
+                raise ValueError(
+                    "run_episode: method='sac_her_recovery_v4_hx4' requires "
+                    "level4_classifier to be loaded once by the caller and "
+                    "passed in, in addition to recovery_v4_classifier."
+                )
+        elif method == "sac_her_recovery_v4_hx5":
+            from recovery.recovery_v4_hx5 import recovery_step_hx5 as recovery_step
+            if level4_classifier is None:
+                raise ValueError(
+                    "run_episode: method='sac_her_recovery_v4_hx5' requires "
+                    "level4_classifier to be loaded once by the caller and "
+                    "passed in, in addition to recovery_v4_classifier."
+                )
+        elif method == "sac_her_recovery_v4_hx6":
+            from recovery.recovery_v4_hx6 import recovery_step_hx6 as recovery_step
+            if level4_classifier is None:
+                raise ValueError(
+                    "run_episode: method='sac_her_recovery_v4_hx6' requires "
                     "level4_classifier to be loaded once by the caller and "
                     "passed in, in addition to recovery_v4_classifier."
                 )
@@ -260,9 +295,25 @@ def run_episode(
                 "Tier 1 CCAR is currently scoped to clean_2M only -- see "
                 "RECOVERY_V4.md section 2.6."
             )
-        recovery_v4_trigger = TriggerWeight(
-            clean_pfail_p95=recovery_v4_calibration[recovery_v4_checkpoint]
-        )
+        if method == "sac_her_recovery_v4_hx5":
+            # hx5 needs the asymmetric fast-attack/slow-release EMA subclass,
+            # not the plain TriggerWeight every other v4 variant uses.
+            from recovery.recovery_v4_hx5 import FastAttackTriggerWeight
+            recovery_v4_trigger = FastAttackTriggerWeight(
+                clean_pfail_p95=recovery_v4_calibration[recovery_v4_checkpoint]
+            )
+        elif method == "sac_her_recovery_v4_hx6":
+            # hx6 needs the Level-4-gated fast-attack EMA subclass -- same
+            # idea as hx5's, but only fires the fast alpha when Level 4
+            # confidently predicts perception_state/goal_manipulation.
+            from recovery.recovery_v4_hx6 import GatedFastAttackTriggerWeight
+            recovery_v4_trigger = GatedFastAttackTriggerWeight(
+                clean_pfail_p95=recovery_v4_calibration[recovery_v4_checkpoint]
+            )
+        else:
+            recovery_v4_trigger = TriggerWeight(
+                clean_pfail_p95=recovery_v4_calibration[recovery_v4_checkpoint]
+            )
         recovery_v4_expert_state = ExpertState()
         recovery_state = None
     elif _use_recovery:
@@ -307,7 +358,9 @@ def run_episode(
             action = policy_fn(env, policy_obs)
         elif method in {"sac_her", "sac_her_recovery_v2", "sac_her_recovery_v3",
                         "sac_her_recovery_v4", "sac_her_recovery_v4_hx",
-                        "sac_her_recovery_v4_hx2", "sac_her_recovery_v4_hx3"} and model is not None:
+                        "sac_her_recovery_v4_hx2", "sac_her_recovery_v4_hx3",
+                        "sac_her_recovery_v4_hx4", "sac_her_recovery_v4_hx5",
+                        "sac_her_recovery_v4_hx6"} and model is not None:
             action, _ = model.predict(policy_obs, deterministic=True)
         else:
             raise ValueError(f"run_episode: unknown method '{method}' or model is None")

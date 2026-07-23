@@ -91,6 +91,99 @@ underlying comparisons: `recovery_do_no_harm_audit.csv` (55 rows),
   write-up needs a caveat on plain v4's `grip_state_falsification` harm,
   independent of the v4-HX2 adoption decision (`RECOVERY_V4.md` §5.7).
 
+## 6. Final mentor comparison (2026-07-22/23): no recovery / earlier baselines / gradual / selective
+
+Following the mentor's expanded final-push checklist (trigger-speed experiment,
+freeze the final controller, final 4-arm evaluation with 8 named metrics,
+final tables/charts/latency figure) — a genuinely new comparison, not a
+repackaging of sections 1-5 above. Two ambiguous mentor terms were resolved
+via sign-off: "gradual-response recovery" = plain `sac_her_recovery_v4`
+(continuous CCAR blend); "final TAIRO-HX selective recovery" =
+`sac_her_recovery_v4_hx6` (see below — supersedes `v4_hx2` as of 2026-07-23).
+"Earlier recovery baselines" = `sac_her_recovery_v2`/`v3`. All four arms
+confirmed at matched full power (n=450, seeds 0-14, all 11 conditions,
+clean_2M) — `v2`/`v3` had never been run past n=150 before this session;
+`results/data_recovery_v4_v2v3_backfill/` fills that gap.
+
+![Fig 1 final](figures/final_hx_comparison/fig1_success_by_condition.png)
+
+![Fig 2 final — recovery latency](figures/final_hx_comparison/fig2_recovery_latency.png)
+
+**All 8 requested metrics, one row per arm:**
+`results/final_hx_comparison_summary_table.md` (see also the underlying
+`results/final_hx_comparison_{success_safety,delays,timing,final_head_to_head}.csv`).
+
+**Headline, stated plainly (not just "the final method wins"):** the honest
+story is architecture-dependent, not a clean ranking.
+- v4-HX6 vs. plain v4: the sections-1-5 win reproduces at this larger,
+  matched-power grid (+4.2pp on `grip_state_falsification`, BH p=0.0017) —
+  inherited unchanged from v4-HX2, whose mixture v4-HX6 leaves untouched.
+- v4-HX6 vs. `sac_her`: statistical parity on `grip_state_falsification`
+  (not "beats doing nothing," "no longer worse than doing nothing" — same
+  distinction section 4 already draws).
+- **v4-HX6 vs. the OLDER v2/v3 baselines — v2 and v3 both significantly
+  beat v4-HX6 on `grip_state_falsification`** (v2: −8.7pp relative to
+  v4-HX6, BH p=0.00001; v3: −7.8pp, BH p=0.00013) — identical to v4-HX2's
+  own numbers there, confirmed unchanged (see hx6 sub-section below). The
+  older hard-override recovery architecture outright outperforms the final
+  selective CCAR variant on the one condition with a confirmed effect.
+  v4-HX6 does edge out v3 on `action_clipping`/`action_delay`
+  (+3.1pp/+4.7pp, both BH-significant).
+- **Recovery latency (Fig 2) explains why**: v2/v3 detect a failure in ~9
+  steps and apply a full, unblended correction the same step (hard
+  override, 0-step response delay by construction). v4/v4-HX6 detect more
+  slowly (~14-16 steps) AND ramp gradually (~66-77 more steps to reach
+  half-strength blend authority) — ~87-92 total steps before the
+  correction is at full strength, in a 150-step episode (v4-HX6 is
+  marginally faster than plain v4 on average, from its gated speed-up on
+  goal-spoof/perception conditions — see hx6 sub-section). This is the same
+  ramp-lag mechanism the hx4/hx5 goal-spoofing investigation (§ RECOVERY_V4.md
+  §5.10) already diagnosed, now shown to matter on `grip_state_falsification`
+  too, not just goal-spoof.
+- **Safety is the counter-weight, and favors v4-HX6**: C4 safety-violation
+  rate is 2.6% (v2) / 4.0% (v3) vs. 0.1% (v4) / 0.2% (v4-HX6) — both well
+  below even the 0.3% no-recovery baseline. v2/v3's fast hard override comes
+  at a real, measurable safety cost; v4-HX6's slow continuous blend does
+  not. Neither architecture is strictly better — v2/v3 trade safety for
+  speed-to-recovery on this one condition, v4-HX6 trades the reverse.
+
+**Trigger-speed follow-up — `sac_her_recovery_v4_hx6`, now the adopted final
+controller (2026-07-23):** per the mentor's explicit request to continue the
+trigger-speed work (not just report hx5's already-closed null), hx6 applies
+hx5's fast-attack EMA idea but GATED on Level 4 confidently predicting
+`perception_state`/`goal_manipulation` (the families the original ramp-lag
+investigation targeted), so it cannot touch the `grip_state_falsification`
+(`action_actuation`) pathway hx5's *global* speed-up regressed. Smoke-tested:
+fires by step 4 on `goal_spoof_immediate` (vs. hx2's ~16-step baseline),
+stays at hx2's original (unmodified) pace on `grip_state_falsification`.
+
+Full n=450 evaluation (`scripts/evaluate_recovery_v4_hx6.py`,
+`results/recovery_v4_hx6_evaluation.csv`) against v4/hx2/v2/v3/sac_her:
+- **Goal-spoof target: another genuine, well-powered null** — no confirmed
+  movement on `goal_spoof_immediate`/`goal_spoof_midep` vs. any baseline
+  (all BH p=1.0), the same outcome as hx4 and hx5.
+- **`grip_state_falsification` vs. v4-HX2: EXACTLY identical** (delta=0.000,
+  p=1.0) — the Level-4 gate works precisely as designed: the fast trigger
+  never fires on this condition, so hx2's confirmed win over plain v4
+  (+4.2pp, p=0.0017) carries over completely unchanged.
+- **Do-no-harm vs. `sac_her`: completely clean** — zero significant harm on
+  any of the 11 conditions, unlike hx5's soft (non-BH-significant but
+  real-point-estimate) regression risk on this same comparison.
+
+**Adoption decision (confirmed via sign-off):** hx6 replaces v4-HX2 as the
+adopted final controller. Rationale: hx6 is a strict "safe superset" of
+v4-HX2 in this data — identical or better on every measured metric, zero
+new regression risk — even though its own original target (closing the
+goal-spoof gap) remains an honest null, same as hx3/hx4/hx5 before it. This
+is a `no_confirmed_regression` + `strictly_safer_trigger_design` adoption
+rationale, distinct from every prior hx-variant decision in this project
+(all of which required a *new confirmed win* to be adopted) — flagged
+explicitly here rather than silently applying the usual bar, since it is a
+genuinely different kind of adoption argument. `app/live_attack_demo.py`'s
+recovery pane and all final-comparison figures/tables in this section now
+run `v4_hx6`. See `FINAL_APPROACH.md` for the complete, standalone
+explanation of the adopted approach and its improvement over baselines.
+
 ## Method notes
 
 - All success-rate CIs (Fig 1, `recovery_hx_success_by_method_condition.csv`)

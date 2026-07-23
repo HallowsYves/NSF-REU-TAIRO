@@ -22,6 +22,26 @@ recovery.recovery_v4.recovery_step to actually blend the action, not just
 display telemetry) -- plus an end-of-episode trustworthiness section that
 shows both this run's real outcome and the committed, statistically
 validated C1-C5 benchmark numbers for the selected condition.
+
+2026-07-22: the recovery pane now runs `sac_her_recovery_v4_hx2`
+(recovery.recovery_v4_hx2.recovery_step_hx2 -- Level 1 stage-gate + Level 4
+attack-family down-weight), not plain v4 -- v4_hx2 is the sole adopted
+TAIRO-HX variant (see RECOVERY_V4.md, findings.md Phase 11), so the final
+side-by-side demo should showcase it rather than the superseded plain-v4
+baseline. The end-of-episode benchmark-comparison table still looks up
+sac_her_recovery_v4's committed numbers (results/data_recovery_v4/
+phase6_summary_...csv has no v4_hx2 row yet -- no trustworthiness-score
+summary has been built for it) -- shown as an approximate predecessor
+reference, labeled as such, not a v4_hx2-specific number.
+
+2026-07-23: superseded by `sac_her_recovery_v4_hx6`
+(recovery.recovery_v4_hx6.recovery_step_hx6 -- v4-HX2's mixture unchanged,
+plus a Level-4-gated fast-attack trigger EMA) -- confirmed via sign-off as
+the new adopted final controller after its full n=450 evaluation showed it
+behaves identically to v4-HX2 everywhere measured (including an EXACT,
+zero-delta match on grip_state_falsification -- the Level-4 gate correctly
+never fires there) with zero new regression risk, unlike hx5's global
+speed-up. See RECOVERY_V4.md and FINAL_APPROACH.md for the full comparison.
 """
 
 import os
@@ -43,8 +63,9 @@ from policies.sac_her_policy import SACHerPolicy
 from evaluation.attack_dispatch import apply_sensor_attack, apply_action_attack
 from evaluation.episode_runner import _pnp_spatial_fields
 from recovery.recovery_v4 import (
-    TriggerWeight, ExpertState, recovery_step, EPSILON as RECOVERY_V4_EPSILON,
+    ExpertState, EPSILON as RECOVERY_V4_EPSILON,
 )
+from recovery.recovery_v4_hx6 import recovery_step_hx6, GatedFastAttackTriggerWeight
 from attacks.sensor_attacks import apply_sensor_bias, shift_target, apply_object_pose_spoof
 from app.sim_worker import SimWorker, SimWorkerCrashed
 
@@ -54,6 +75,11 @@ from app.sim_worker import SimWorker, SimWorkerCrashed
 # --recovery-v4-classifier-dir convention).
 CLASSIFIER_SEEDFIX_DIR = "results/classifier_seedfix"
 
+# Level 4 (attack-family) classifier -- second artifact v4-HX2 requires
+# beyond the online failure classifier above (see recovery/recovery_v4_hx2.py,
+# scripts/run_multiseed_sweep.py's own --methods sac_her_recovery_v4_hx2 wiring).
+LEVEL4_CLASSIFIER_PATH = "results/classifier_level4/level4_classifier.pkl"
+
 # Committed Tier-1 CCAR benchmark (5 seeds x 30 episodes/seed, clean_2M
 # checkpoint) -- already has C1-C5 computed per (method, condition,
 # attack_level) via evaluation/metrics.py's add_trustworthiness_scores().
@@ -62,29 +88,33 @@ CLASSIFIER_SEEDFIX_DIR = "results/classifier_seedfix"
 # in evaluation/metrics.py, always a rate-based metric across many episodes.
 BENCHMARK_SUMMARY_PATH = "results/data_recovery_v4/phase6_summary_sac_her_pickandplace_clean_2M.csv"
 
-# A concrete, verified example of Recovery v4 flipping a failed episode
-# into a success -- taken directly from the committed episode CSV
-# (results/data_recovery_v4/episode_results_sac_her_pickandplace_clean_2M.csv,
-# sac_her vs sac_her_recovery_v4, reset_seed = 100*seed + episode_in_seed
-# matching evaluation/episode_runner.py's convention). action_delay is one
-# of only two conditions with a clean net-positive lift and zero
-# down-flips in that grid (the other is action_clipping); most other
-# conditions/seeds show no visible per-episode difference, since Tier 1
-# CCAR's real aggregate benefit on this checkpoint is small (<2pp best
-# case; grip_state_falsification is a net *regression*). See
-# RECOVERY_V4.md for the full picture.
+# A concrete example of recovery flipping a failed episode into a success --
+# taken directly from the committed episode CSVs (results/data_recovery_v4/
+# and results/data_recovery_v4_hx2/episode_results_sac_her_pickandplace_
+# clean_2M.csv), reset_seed = 100*seed + episode_in_seed matching
+# evaluation/episode_runner.py's convention (this demo's own seed field maps
+# 1:1 onto that reset_seed, so e.g. seed=114 below means csv_seed=1,
+# episode_in_seed=14).
 #
-# This CSV-derived value is safe to use again as of the mj_copyData fix in
-# sim_worker.py's _render_preserving_physics -- until that fix, SimWorker
-# calling env.render() every step measurably perturbed MuJoCo's physics
-# (confirmed root cause: gymnasium_robotics's FetchEnv._render_callback
-# calls mj_forward() to reposition a cosmetic goal-marker site, which as a
-# side effect re-runs the contact solver and changes data.qacc_warmstart),
-# so a seed's outcome in the headless batch eval did not reliably predict
-# its outcome in this rendered demo. Re-verified through the actual
-# SimWorker subprocess after the fix: action_delay/seed=6 now reproduces
-# exactly clean=FAIL, recovery=SUCCESS, matching the CSV.
-SUGGESTED_EXAMPLE = {"condition": "action_delay", "seed": 6}
+# 2026-07-22: re-picked for the v4-HX2 swap (see module docstring) --
+# action_delay/seed=6 (demo convention, i.e. csv reset_seed=6) was the
+# verified plain-v4 example, but action_delay is an action_actuation-family
+# condition, and v4-HX2's own down-weight on that family means it does NOT
+# reproduce the same flip: checked directly against the committed CSVs,
+# sac_her/v4/v4-HX2 all agree on FAIL for that exact episode under HX2's
+# down-weighted blend. grip_state_falsification/seed=114 is HX2's actual
+# confirmed, BH-significant win (RECOVERY_V4.md, findings.md Phase 11) and
+# does flip FAIL->SUCCESS in the committed CSVs. NOTE: only CSV-verified so
+# far, not yet re-confirmed through the live SimWorker subprocess the way
+# the original action_delay/seed=6 example was (see the mj_copyData
+# discussion this comment used to carry, still accurate background for why
+# that extra check matters) -- worth a quick live check before relying on
+# it for the actual mentor demo.
+SUGGESTED_EXAMPLE = {"condition": "grip_state_falsification", "seed": 114}
+# Live-verified (2026-07-22) via a real Playwright-driven headless Chromium
+# session against the actual Streamlit server: clean pane FAILURE, v4-HX2
+# pane SUCCESS, "Recovery saved this episode" banner, zero console errors --
+# matches the CSV prediction above exactly.
 
 # FetchPickAndPlace-v4's action space is the standard Box(-1, 1, (4,))
 # (same convention already hardcoded in attacks/action_attacks.py's
@@ -144,6 +174,15 @@ def load_recovery_v4_artifacts():
     with open(calibration_path, "rb") as f:
         calibration = pickle.load(f)
     return classifier, calibration
+
+
+@st.cache_resource
+def load_level4_classifier():
+    """Level 4 (attack-family) classifier -- required by recovery_step_hx6
+    in addition to the online failure classifier. Loaded once, same pattern
+    as load_recovery_v4_artifacts()."""
+    with open(LEVEL4_CLASSIFIER_PATH, "rb") as f:
+        return pickle.load(f)
 
 
 @st.cache_resource
@@ -333,7 +372,7 @@ def reset_episode(seed: int, condition: str, attack_level: float) -> None:
 
         if pane.use_recovery:
             _classifier, calibration = load_recovery_v4_artifacts()
-            pane.trigger = TriggerWeight(clean_pfail_p95=calibration["clean_2M"])
+            pane.trigger = GatedFastAttackTriggerWeight(clean_pfail_p95=calibration["clean_2M"])
             pane.expert_state = ExpertState()
             pane.class_probs = {}
             pane.p_fail = None
@@ -390,17 +429,19 @@ def step_pane(pane: PaneState, condition: str, attack_level: float) -> None:
         intended_action.copy() if condition == "action_delay" else executed_action.copy()
     )
 
-    # -- Recovery v4 blend (recovery pane only). Uses raw obs (pane.obs,
+    # -- Recovery v4-HX6 blend (recovery pane only). Uses raw obs (pane.obs,
     # pre-sensor-attack) and step_history built from steps [0, step_count-1]
-    # only -- recovery_step's own step-0 guard handles the first step. ------
+    # only -- recovery_step_hx6's own step-0 guard handles the first step. --
     if pane.use_recovery:
         classifier, _calibration = load_recovery_v4_artifacts()
+        level4_classifier = load_level4_classifier()
         step_history_df = pd.DataFrame(pane.step_history)
-        executed_action, pane.class_probs, pane.recovery_weight = recovery_step(
+        executed_action, pane.class_probs, pane.recovery_weight = recovery_step_hx6(
             policy_action=executed_action,
             obs=pane.obs,
             step_history_df=step_history_df,
             classifier_artifact=classifier,
+            level4_classifier_artifact=level4_classifier,
             trigger=pane.trigger,
             expert_state=pane.expert_state,
             step=pane.step_count,
@@ -490,7 +531,7 @@ def render_pane(pane: PaneState, title: str, render_slot, metrics_slot, show_cla
 
         if show_classifier:
             st.divider()
-            st.markdown("**Classifier / Recovery v4**")
+            st.markdown("**Classifier / Recovery v4-HX6**")
             if pane.class_probs:
                 predicted_label = max(pane.class_probs, key=pane.class_probs.get)
                 st.write(f"Predicted: **{predicted_label}** (p={pane.class_probs[predicted_label]:.2f})")
@@ -498,7 +539,7 @@ def render_pane(pane: PaneState, title: str, render_slot, metrics_slot, show_cla
                 st.caption(f"EMA(p_fail) = {pane.ema_pfail:.3f}")
                 st.progress(
                     min(max(pane.recovery_weight, 0.0), 1.0),
-                    text=f"Recovery v4 blend weight w = {pane.recovery_weight:.3f}",
+                    text=f"Recovery v4-HX6 blend weight w = {pane.recovery_weight:.3f}",
                 )
             else:
                 st.caption(
@@ -535,7 +576,7 @@ def render_trustworthiness_section(slot, condition: str, attack_level: float) ->
             n_violations = int(sum(row["safety_violation"] for row in pc.step_history))
             st.caption(f"C4 safety violations: {n_violations} step(s)")
         with c2:
-            st.markdown("**Policy + Recovery v4**")
+            st.markdown("**Policy + Recovery v4-HX6**")
             st.write("Success" if pr.success else "Failure")
             st.caption(f"Final distance to goal: {pr.distance_to_goal_now:.3f} m")
             n_violations = int(sum(row["safety_violation"] for row in pr.step_history))
@@ -565,7 +606,12 @@ def render_trustworthiness_section(slot, condition: str, attack_level: float) ->
         st.markdown("**How this compares to the full benchmark**")
         st.caption(
             "From the committed 5-seed × 30-episode-per-seed evaluation "
-            "(results/data_recovery_v4), not just this one run."
+            "(results/data_recovery_v4), not just this one run. NOTE: this "
+            "table still shows plain sac_her_recovery_v4's committed C1-C5 "
+            "numbers, not v4-HX6's (the recovery pane above runs v4-HX6, "
+            "but no trustworthiness-score summary has been built for it "
+            "yet) -- shown as an approximate predecessor reference only, "
+            "not a v4-HX6-specific number."
         )
         bdf = load_benchmark_summary()
         base_row = lookup_benchmark_row(bdf, "sac_her", condition, attack_level)
@@ -579,7 +625,7 @@ def render_trustworthiness_section(slot, condition: str, attack_level: float) ->
                         base_row["reliability_score"], base_row["safety_score"],
                         base_row["recovery_score"], base_row["trustworthiness_score_weighted"],
                     ],
-                    "sac_her_recovery_v4": [
+                    "sac_her_recovery_v4 (reference only, not HX6)": [
                         rec_row["reliability_score"], rec_row["safety_score"],
                         rec_row["recovery_score"], rec_row["trustworthiness_score_weighted"],
                     ],
@@ -629,7 +675,7 @@ def render_fragment(
     # uncaught exception.
     try:
         render_pane(pc, "Clean policy (no recovery)", render_slot_clean, metrics_slot_clean, show_classifier=False)
-        render_pane(pr, "Policy + Recovery v4", render_slot_recovery, metrics_slot_recovery, show_classifier=True)
+        render_pane(pr, "Policy + Recovery v4-HX6 (selective)", render_slot_recovery, metrics_slot_recovery, show_classifier=True)
         render_trustworthiness_section(trust_slot, condition, attack_level)
     except st.errors.StreamlitAPIException:
         pass
@@ -643,14 +689,17 @@ def main() -> None:
     st.title("SAC+HER (clean_2M) — Recovery Comparison Demo")
     st.caption(
         "Two synchronized episodes, same seed and identical attack instance: "
-        "the raw SAC+HER policy on the left, SAC+HER + Recovery v4 (CCAR) on "
-        "the right. Try condition "
+        "the raw SAC+HER policy on the left, SAC+HER + Recovery v4-HX6 "
+        "(selective CCAR — Level 1 stage-gate + Level 4 attack-family "
+        "down-weight + Level-4-gated fast-attack trigger, the adopted "
+        "TAIRO-HX final controller) on the right. Try condition "
         f"'{SUGGESTED_EXAMPLE['condition']}' with seed {SUGGESTED_EXAMPLE['seed']} "
         "(the default seed — just switch the condition and hit Reset) for a "
         "verified example of recovery saving an otherwise-failed episode — "
-        "most seeds show no difference, since Recovery v4's real aggregate "
-        "benefit on this checkpoint is a small lift on a couple of "
-        "conditions, not a dramatic per-episode effect."
+        "most seeds show no difference, since Recovery v4-HX6's real "
+        "aggregate benefit on this checkpoint is a confirmed lift on "
+        "grip_state_falsification, not a dramatic per-episode effect "
+        "everywhere."
     )
 
     st.subheader("Attack controls")

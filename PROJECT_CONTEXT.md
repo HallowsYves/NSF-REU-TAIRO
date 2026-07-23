@@ -33,37 +33,44 @@ Prior Item 1 result for reference (unchanged): flat RF 0.9424/0.8159 (canonical)
 
 **2026-07-21 (later the same day): the Streamlit demo's v3 scope — a dual-pane "Recovery Comparison Demo" — was built, with two real bugs found and fixed.** `app/live_attack_demo.py` was rewritten around a `PaneState` container and a shared `step_pane()` helper; two synchronized `SimWorker` subprocesses now run the same seed/condition in lockstep — raw SAC+HER on the left, SAC+HER + Recovery v4 (CCAR) on the right, with the right pane now genuinely calling `recovery.recovery_v4.recovery_step()` and executing the blended action (previously the v2 overlay was telemetry-only). A "Trustworthiness — this run" section shows both the real per-episode outcome and a lookup into the committed 150-episode `results/data_recovery_v4` benchmark. Two real, root-caused bugs were found during real-browser verification and fixed: (1) `apply_sensor_attack` never threads a seed to `sensor_bias`/`goal_spoof_*`/`object_pose_spoof`'s sampling, so the two panes would get different corruption instances — fixed via `precompute_shared_attack_vectors`/`ensure_shared_attack_vectors`; (2) `env.render()` is not side-effect-free in this MuJoCo/gymnasium_robotics env family — `FetchEnv._render_callback()`'s `mj_forward()` call measurably perturbs the contact solver's warm-start state, meaning live-rendered outcomes could diverge from the headless batch eval purely because the demo renders every step — fixed via `_render_preserving_physics()`'s full `mj_copyData()` snapshot/restore. Committed as `132f702` (v3) and `7f8aebb` (both bug fixes, bundled with an unrelated parallel workstream's commit) — both landed as direct commits between sessions, not staged-and-held (predates CLAUDE.md's git-discipline rule).
 
+**2026-07-22 (later): goal-spoofing investigation closed — three hypotheses tested, none adopted.** Following the mentor's "pursue additional recovery improvements" directive, investigated why `v4`/`v4_hx`/`v4_hx2` show no lift over `sac_her` on `goal_spoof_immediate`/`goal_spoof_midep` despite `v3` getting +2.9pp/+4.9pp there. Three independent, well-powered (n=450) hypotheses tested in sequence: (1) wrong expert consuming the `spoofed_goal` classifier signal — fixed via `sac_her_recovery_v4_hx4`'s full remap (`relocalization_expert`→Level 4's `perception_state`, `transport_expert`→`spoofed_goal`+`divergent_transport`) — **genuine null**, no confirmed movement on goal-spoof, though it does preserve `hx2`'s `grip_state_falsification` win (+4.9pp vs v4, p=0.00007). (2) Classifier signal itself weak/late — **ruled out** by direct data analysis (spoofed_goal recall 0.947/precision 0.782, negligible confusion with `divergent_transport`, detection within ~1 checkpoint of real attack onset). (3) Trigger EMA too slow to ramp (confirmed from hx4's own step logs: `w` takes 16+ steps to activate, 40-60+ to reach real strength, vs. v3's 3-10) — fixed via `sac_her_recovery_v4_hx5`'s asymmetric fast-attack EMA (verified ~4-5x faster ramp) — **another genuine null** on goal-spoof, and this one shows a soft (not BH-significant) regression signal on the previously-confirmed `grip_state_falsification` win. **Net: neither hx4 nor hx5 adopted — `sac_her_recovery_v4_hx2` remains the sole adopted variant.** Three ruled-out hypotheses is itself a real, informative negative result: the gap likely reflects v3's hard-override vs. v4's continuous-blend architecture, not a fixable routing/timing bug. Full detail: `RECOVERY_V4.md` §5.10, `findings.md` Phase 12. Investigation closed per sign-off — not to be reopened without new evidence.
+
 **2026-07-22: first-ever multi-session concurrency stress test found and fixed a real crash bug.** The dual-pane demo spawns 2 `SimWorker` subprocesses per browser session — never stress-tested before. A Playwright-driven real-browser test running 4 concurrent sessions reproduced, twice in a row on a clean server, 2-of-4 sessions crashing outright: `multiprocessing`'s spawn-based `Process.start()` reduces a child's `Connection` via a process-global "currently spawning Popen" slot, and since Streamlit runs each session's script in its own thread of one process, concurrent `SimWorker` creation across sessions raced on that global and corrupted which pipe fd wired to which child (`_pickle.UnpicklingError` on the parent's `recv()`, `BrokenPipeError` on the child's `send()`). Fixed in `app/sim_worker.py` with a `threading.Lock` serializing each `SimWorker`'s cold start — narrowing the lock to exclude the handshake wait was tried and measurably made things worse (0/4 sessions completed vs. 4/4 on repeat runs at the wider scope), so the wider scope was kept. `_recv()`'s exception handling was also broadened (`OSError`/`pickle.PickleError`, not just `EOFError`), which exposed and required fixing a second bug in `render_trustworthiness_section` (a crashed pane was marked `done=True`, rendering the trustworthiness comparison as if the episode had legitimately finished). Re-verified with 3 more 4-concurrent-session runs post-fix: 0 crashes (down from a consistent 2/4 crash rate pre-fix). Two more findings from the same stress test were surfaced but NOT fixed (out of scope for this pass): `SimWorker` subprocesses are never cleaned up when a browser tab closes while the server keeps running (no cleanup hook exists), and the server spawns and immediately orphans one throwaway `SimWorker` pair at boot, before any real session connects. Staged, not committed (per CLAUDE.md git discipline).
 
 ## Next Steps
-**Re-planned 2026-07-22 in direct response to mentor feedback** (see Current Status) —
-supersedes the previous plan's "shift to paper writing" priority.
+**Re-planned 2026-07-22 (evening) — both mentor-directed workstreams from the earlier
+2026-07-22 re-plan are now complete.**
 
-1. **Build the poster/video results package (highest near-term priority, not yet built).**
-   Summary tables + charts (success rate by condition/method, CI/significance visualizations)
-   + brief interpretive text for `v4_hx`, `v4_hx2`, `v4_hx3`, and the do-no-harm audit.
-   Source data already exists and is validated: `results/data_recovery_v4_hx/`,
-   `results/data_recovery_v4_hx2/`, `results/data_recovery_v4_hx3/`,
-   `results/recovery_do_no_harm_audit.csv`, `results/recovery_v4_hx3_evaluation.csv`. This is
-   packaging/presentation work, not new experiments.
-2. **Pursue one more "additional recovery improvement"** per the mentor's explicit ask for
-   more than the one confirmed win. Recommended next candidate: investigate why `v4_hx`/
-   `v4_hx2` underperform `v3` on `goal_spoof_immediate`/`goal_spoof_midep` — real headroom is
-   already proven there (`v3` gets +2.9pp/+4.9pp over `sac_her`), unlike the hard-ceiling
-   conditions. Calibrating `STAGE_EXPERT_SOFT_WEIGHT` / `LEVEL4_ACTION_ACTUATION_DOWNWEIGHT` /
-   `LEVEL4_CONFIDENT_THRESH` is the next-best candidate if that investigation stalls.
-3. Recommended sequencing given ~9 days left: front-load item 1 (fast, de-risked, guaranteed
-   value regardless of item 2's outcome), then spend remaining time on item 2 -- flagged as a
-   recommendation, not a fixed decision; open to running them concurrently if preferred.
-4. Lower priority, not urgent since paper writing itself is paused: whether the paper's
-   eventual Tier 1 CCAR writeup needs a caveat on `grip_state_falsification` (plain v4's
-   confirmed harm there), and whether `hx3`'s null result is worth a one-line paper mention.
-5. **Paper writing, JCDL scope-vs-runway, and the Item-1/Level-2-scope paper-framing
+1. ~~Build the poster/video results package~~ — **done.** `results/figures/recovery_hx_package/`
+   (3 figures), `results/recovery_hx_success_by_method_condition.{csv,md}`,
+   `results/recovery_hx_key_findings_table.{csv,md}`, `results/recovery_hx_results_summary.md`
+   (interpretive report). Covers `v4_hx`, `v4_hx2`, `v4_hx3`, and the do-no-harm audit as
+   requested. Not yet updated to also cover `hx4`/`hx5` (item 2, closed after the package was
+   built) — worth a quick pass if the poster/video actually needs those two mentioned.
+2. ~~Pursue one more "additional recovery improvement"~~ — **done, closed as a negative
+   result.** Three hypotheses tested (wrong expert / weak classifier signal / slow trigger
+   EMA), none adopted. See Current Status above, `RECOVERY_V4.md` §5.10, `findings.md`
+   Phase 12. `sac_her_recovery_v4_hx2` remains the sole adopted variant.
+3. **Both of the mentor's explicit asks for this session are now done.** Next session should
+   check in with the mentor (or the user) before choosing a new direction rather than
+   assuming what comes next — nothing is currently queued.
+4. Open, not yet decided: whether the goal-spoofing negative result (like `hx3`'s) is worth a
+   one-line paper mention alongside `hx3`'s.
+5. Still open, independent of the above: whether the paper's existing Tier 1 CCAR write-up
+   needs a `grip_state_falsification` caveat for plain `v4`'s confirmed harm there.
+6. **Paper writing, JCDL scope-vs-runway, and the Item-1/Level-2-scope paper-framing
    conversations are all explicitly paused per the mentor's direction** — not "open whenever
    wanted" anymore; do not resume until told.
-6. Timeline: July 31, 2026 IEEE BigData 2026 REU Symposium deadline (~9 days out as of
+7. **Push validated local work to GitHub.** As of 2026-07-22 evening: one commit
+   (`6d0b989`) sits locally ahead of `origin/main`, unpushed (bundles this week's results
+   package with an unrelated parallel workstream's changes — not this session's doing, see
+   Session Log). This session's own new work (`hx4`/`hx5` code, data, evaluation CSVs,
+   `config.py`/`episode_runner.py`/`run_multiseed_sweep.py` wiring, `RECOVERY_V4.md` +
+   `findings.md` updates) is staged but not committed, per this project's standing "Claude
+   Code sessions never commit" rule — a human needs to review and push.
+8. Timeline: July 31, 2026 IEEE BigData 2026 REU Symposium deadline (~9 days out as of
    2026-07-22).
-7. Demo track (separate from the HX/recovery-integration work above): decide whether to fix
+9. Demo track (separate from the HX/recovery-integration work above): decide whether to fix
    the two remaining known issues from the 2026-07-22 stress test (tab-close orphan leak,
    boot-time phantom worker pair) — both documented, neither blocking, no urgency established
    yet.
@@ -85,6 +92,55 @@ supersedes the previous plan's "shift to paper writing" priority.
 - Streamlit live demo: `app/live_attack_demo.py` (UI/session-state/control flow) + `app/sim_worker.py` (subprocess-isolated MuJoCo rendering — required on macOS; see Session Log 2026-07-21).
 
 ## Session Log
+
+### 2026-07-22 (results package built + goal-spoofing investigation closed)
+- **What changed:** Re-verified `session_handoff_8.md`'s claims against live repo state
+  (git status/log, file existence, exact numbers in the audit CSVs) before acting on them —
+  all confirmed accurate, including the already-flagged `results/recovery_do_no_harm_audit.csv`
+  /`results/recovery_v4_hx_vs_v4_full_grid.csv` landing in the concurrent Streamlit session's
+  `7f8aebb` commit rather than staying staged. Built the poster/video results package
+  (`scripts/build_recovery_hx_results_package.py`, new): 3 figures using the repo's validated
+  dataviz palette, 2 summary tables, 1 interpretive markdown report. Then investigated the
+  goal-spoofing underperformance: built and evaluated `sac_her_recovery_v4_hx4`
+  (`recovery/recovery_v4_hx4.py`, expert-routing remap) and, after a background agent ruled
+  out classifier reliability as a cause, `sac_her_recovery_v4_hx5`
+  (`recovery/recovery_v4_hx5.py`, fast-attack trigger EMA) — both evaluated immediately at
+  full power (n=450, all 11 conditions) via new `scripts/evaluate_recovery_v4_hx4.py` /
+  `_hx5.py`. Updated `RECOVERY_V4.md` (§5.10, new) and `findings.md` (Phase 12, new) with the
+  full closed investigation.
+- **Decisions made:** (1) For hx4, chose the "full remap" design (spoofed_goal fully off
+  relocalization_expert, onto transport_expert; relocalization_expert onto Level 4's
+  perception_state) over a more conservative additive-only alternative — confirmed via
+  sign-off, a bigger architectural change than hx3's plain-max() pattern. (2) Delegated the
+  classifier-reliability half of the investigation to a background Explore agent (read-only,
+  no new sweeps) while hx4's sweep ran in parallel, rather than running it serially — agent
+  confirmed the classifier itself was not the bottleneck (spoofed_goal recall 0.947/precision
+  0.782, prompt detection). (3) Designed hx5 as an asymmetric fast-attack/slow-release EMA
+  (`config.RECOVERY_V4_HX5_ATTACK_ALPHA_MULTIPLIER=4.0`, new provisional constant) rather than
+  globally speeding up the trigger, specifically to avoid re-opening Phase 5b's already-tuned
+  clean-episode decay calibration — confirmed working as designed via a smoke-test check of
+  the actual step-by-step `w` ramp before committing to the full sweep. (4) After hx5 also
+  came back a null (and showed a soft regression signal on the `grip_state_falsification`
+  win), chose to close the investigation and document all three hypotheses as a real negative
+  result rather than attempt a 4th, narrower variant — confirmed via sign-off, given three
+  independent well-powered hypotheses had already been ruled out.
+- **Rationale / results:** Full detail and all numbers are in `RECOVERY_V4.md` §5.10 and
+  `findings.md` Phase 12 — not re-duplicated here. Headline: neither `hx4` nor `hx5` closes
+  the `v3`-vs-`v4`-family gap on `goal_spoof_immediate`/`goal_spoof_midep`; `hx4` is a clean
+  null with no side effects, `hx5` is a null that also shows the previously-confirmed
+  `grip_state_falsification` win drop from BH-significant to a raw p=0.058 (not
+  BH-significant) — a real, if unconfirmed, cost. `sac_her_recovery_v4_hx2` remains the sole
+  adopted variant. Three ruled-out, well-motivated hypotheses (wrong expert, weak classifier
+  signal, slow trigger) is itself informative: the gap most likely reflects `v3`'s
+  hard-override architecture vs. `v4`'s continuous-blend architecture, not a fixable
+  routing/timing defect within the current CCAR design.
+- **Blockers hit:** None new. The concurrent Streamlit-track session wrote its own
+  `session_handoff_9.md` and committed again (`6d0b989`, bundling this session's earlier-staged
+  results-package files together with its own `app/` changes) mid-session — consistent with
+  the already-repeatedly-flagged pattern from prior sessions, not re-investigated further,
+  left untouched per standing user direction. This session's own new work (hx4/hx5 code, data,
+  eval scripts, `config.py`/`episode_runner.py`/`run_multiseed_sweep.py` wiring,
+  `RECOVERY_V4.md`/`findings.md` updates) was staged (not committed) at session end.
 
 ### 2026-07-22 (Streamlit demo: multi-session stress test + concurrency crash fix)
 - **What changed:** Picked up the Streamlit demo workstream from `session_handoff_7.md`.

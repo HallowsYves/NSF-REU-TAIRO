@@ -1,0 +1,57 @@
+AdroitHandRelocateDense-v1, AdroitHandHammerDense-v1, AdroitHandDoorDense-v1 environment's reward functions were updated in v1.2.1 without an environment version update. Therefore, use gymnasium-robotics==1.2.0 for v1 reproducibility or use v2 in gymnasium-robotics>=1.4.3. See https://github.com/Farama-Foundation/Gymnasium-Robotics/pull/220 for more details
+[sweep] env=sac_her_pickandplace_clean_2M  max_steps=150  model=results/models/sac_her_pickandplace_clean_2M
+[sweep] seeds=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]  n_episodes=30  conditions=11  methods=1
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+[sweep] Loading Recovery v4 Tier 1 CCAR artifacts:
+        results/classifier_seedfix/online_failure_classifier.pkl
+        results/classifier_seedfix/recovery_v4_trigger_calibration.pkl
+[sweep] Loading Level 4 classifier artifact:
+        results/classifier_level4/level4_classifier.pkl
+
+[sweep] seed=0
+
+[sweep] seed=1
+
+[sweep] seed=2
+
+[sweep] seed=3
+
+[sweep] seed=4
+
+[sweep] seed=5
+
+[sweep] seed=6
+
+[sweep] seed=7
+
+[sweep] seed=8
+
+[sweep] seed=9
+
+[sweep] seed=10
+
+[sweep] seed=11
+
+[sweep] seed=12
+
+[sweep] seed=13
+
+[sweep] seed=14
+
+[sweep] Done — 4950 episodes, 742500 timesteps.
+        results/data_recovery_v4_hx5/episode_results_sac_her_pickandplace_clean_2M.csv
+        results/data_recovery_v4_hx5/step_logs_sac_her_pickandplace_clean_2M.csv
+
+[sweep] Condition coverage (sac_her_recovery_v4_hx5 only):
+        clean                           450 episodes
+        sensor_dropout                  450 episodes
+        sensor_bias                     450 episodes
+        action_clipping                 450 episodes
+        action_delay                    450 episodes
+        action_reversal                 450 episodes
+        goal_spoof_immediate            450 episodes
+        goal_spoof_midep                450 episodes
+        object_pose_spoof               450 episodes
+        grip_state_falsification        450 episodes
+        contact_dropout                 450 episodes

@@ -80,6 +80,10 @@ results/data_recovery_v4_power_check/step_logs*.csv
 results/data_recovery_v4_power_check_round2/step_logs*.csv
 results/data_recovery_v4_power_check_sacher_backfill/step_logs*.csv
 results/data_recovery_v4_hx3/step_logs*.csv
+results/data_recovery_v4_hx4/step_logs*.csv
+results/data_recovery_v4_hx5/step_logs*.csv
+results/data_recovery_v4_hx6/step_logs*.csv
+results/data_recovery_v4_v2v3_backfill/step_logs*.csv
 results/classifier_level4/level4_classifier.pkl
 
 # Pre-fix data archive — only CSVs gitignored; README.md in this dir IS committed

@@ -1,0 +1,42 @@
+AdroitHandRelocateDense-v1, AdroitHandHammerDense-v1, AdroitHandDoorDense-v1 environment's reward functions were updated in v1.2.1 without an environment version update. Therefore, use gymnasium-robotics==1.2.0 for v1 reproducibility or use v2 in gymnasium-robotics>=1.4.3. See https://github.com/Farama-Foundation/Gymnasium-Robotics/pull/220 for more details
+[sweep] env=sac_her_pickandplace_clean_2M  max_steps=150  model=results/models/sac_her_pickandplace_clean_2M
+[sweep] seeds=[5, 6, 7, 8, 9, 10, 11, 12, 13, 14]  n_episodes=30  conditions=11  methods=2
+Wrapping the env with a `Monitor` wrapper
+Wrapping the env in a DummyVecEnv.
+
+[sweep] seed=5
+
+[sweep] seed=6
+
+[sweep] seed=7
+
+[sweep] seed=8
+
+[sweep] seed=9
+
+[sweep] seed=10
+
+[sweep] seed=11
+
+[sweep] seed=12
+
+[sweep] seed=13
+
+[sweep] seed=14
+
+[sweep] Done — 6600 episodes, 990000 timesteps.
+        results/data_recovery_v4_v2v3_backfill/episode_results_sac_her_pickandplace_clean_2M.csv
+        results/data_recovery_v4_v2v3_backfill/step_logs_sac_her_pickandplace_clean_2M.csv
+
+[sweep] Condition coverage (sac_her_recovery_v2 only):
+        clean                           300 episodes
+        sensor_dropout                  300 episodes
+        sensor_bias                     300 episodes
+        action_clipping                 300 episodes
+        action_delay                    300 episodes
+        action_reversal                 300 episodes
+        goal_spoof_immediate            300 episodes
+        goal_spoof_midep                300 episodes
+        object_pose_spoof               300 episodes
+        grip_state_falsification        300 episodes
+        contact_dropout                 300 episodes

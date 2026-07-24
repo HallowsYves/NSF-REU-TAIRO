@@ -16,11 +16,15 @@ __pycache__/
 
 CLAUDE.md
 ATTACK_AWARE_TRACK.md
-findings.md 
+findings.md
 RECOVERY_V4.md
 update_paper.md
 important_update_for_paper.md
 PROJECT_CONTEXT.md
+
+# Per-session working notes / one-off investigation scratch docs — local only
+session_handoff_*.md
+MANIM_VIDEO_DATA.md
 
 results/classifier_flat_xgboost/
 results/level2_labels_clean_2M_scoped.csv

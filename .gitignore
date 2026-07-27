@@ -25,6 +25,14 @@ PROJECT_CONTEXT.md
 # Per-session working notes / one-off investigation scratch docs — local only
 session_handoff_*.md
 MANIM_VIDEO_DATA.md
+POSTER_DRAFT.md
+reported_grasp_contact_options.md
+results/investigation/level3_multilabel_and_taxonomy_findings.md
+TAIRO_HX_VARIANT_COMPARISON.md
+TAIRO_PROJECT_STORY.md
+results/hx6_solo_evaluation_table.md
+results/hx6_solo_trustworthiness_table.md
+results/hx_variants_trustworthiness_table.md
 
 results/classifier_flat_xgboost/
 results/level2_labels_clean_2M_scoped.csv
@@ -101,3 +109,9 @@ results/data/
 # -------------------------------------------------------------------
 c4_paper_changelog.md
 NSF_REU_2026_TAIRO_WEEK_7*.pdf
+
+# -------------------------------------------------------------------
+# Paper draft — not for the public repo (LaTeX source, style file,
+# figures). Kept on disk locally, never pushed.
+# -------------------------------------------------------------------
+paper/

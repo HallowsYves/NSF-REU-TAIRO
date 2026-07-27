@@ -300,15 +300,6 @@ otherwise-failed episode (see `app/live_attack_demo.py`'s `SUGGESTED_EXAMPLE`).
 
 ---
 
-## Paper
-
-The current LaTeX draft is `paper/NSF_REU_2026_TAIRO_WEEK_8/TAIRO_PAPER.tex` (Draft 3).
-Before finalizing, check `important_update_for_paper.md` for the prioritized list of
-corrections and additions needed, and `update_paper.md` for verified numbers with source
-citations.
-
----
-
 ## Experimental History
 
 Full phase-by-phase record of the failure-mode classifier workstream (Phases 0–12,

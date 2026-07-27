@@ -160,31 +160,38 @@ def _bar(ax, df, y_col, ylabel, ylim, pct=False, annotate_n=None):
         if pd.isna(val):
             continue
         label = f"{val*100:.0f}%" if pct else f"{val:.1f}"
-        if n is not None:
-            label += f"\nn={n}/10"
+        x = bar.get_x() + bar.get_width() / 2
         y = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width() / 2, y + ylim[1] * 0.015, label, ha="center", va="bottom",
-                 fontsize=8.2, color=INK_PRIMARY, fontweight="bold", linespacing=1.5)
+        # Value label and "n=x/10" as two separate text calls (not one
+        # multi-line string) so the n= sub-label can stay smaller -- at
+        # matched large font sizes, adjacent bars with close values (the
+        # response-delay panel especially) have wide enough two-line labels
+        # to collide horizontally with their neighbors.
+        ax.text(x, y + ylim[1] * 0.025, label, ha="center", va="bottom",
+                 fontsize=16, color=INK_PRIMARY, fontweight="bold")
+        if n is not None:
+            ax.text(x, y + ylim[1] * 0.13, f"n={n}/10", ha="center", va="bottom",
+                     fontsize=10.5, color=INK_SECONDARY, fontweight="normal")
 
     ax.set_ylim(*ylim)
     if pct:
         import matplotlib.ticker as mtick
         ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1.0))
-    ax.set_ylabel(ylabel, fontsize=10, color=INK_PRIMARY)
-    ax.tick_params(axis="y", colors=INK_SECONDARY, labelsize=9)
-    ax.tick_params(axis="x", colors=INK_PRIMARY, labelsize=10.5)
+    ax.set_ylabel(ylabel, fontsize=17, color=INK_PRIMARY)
+    ax.tick_params(axis="y", colors=INK_SECONDARY, labelsize=15)
+    ax.tick_params(axis="x", colors=INK_PRIMARY, labelsize=16)
     ax.grid(axis="x", visible=False)
     sns.despine(ax=ax, left=False, bottom=True)
 
 
 def _draw_all_panels(ax_det, ax_resp, ax_trig, agg: pd.DataFrame) -> None:
     _bar(ax_det, agg, "detection_delay",
-         "Detection delay (steps)\nattack onset -> first trigger", ylim=(0, 30))
+         "Detection delay (steps)\nattack onset -> first trigger", ylim=(0, 32))
     _bar(ax_resp, agg, "response_delay",
-         "Response delay (steps)\nfirst trigger -> full authority (w>=0.5)", ylim=(0, 100),
+         "Response delay (steps)\nfirst trigger -> full authority (w>=0.5)", ylim=(0, 112),
          annotate_n="response_n_conditions")
     _bar(ax_trig, agg, "trigger_rate",
-         "Trigger rate\n(share of attacked episodes)", ylim=(0, 1.08), pct=True)
+         "Trigger rate\n(share of attacked episodes)", ylim=(0, 1.14), pct=True)
 
 
 def main() -> None:
@@ -193,18 +200,22 @@ def main() -> None:
     print(agg.to_string())
 
     # Landscape, 3 panels side by side -- for full-width use (paper figure).
-    fig, (ax_det, ax_resp, ax_trig) = plt.subplots(1, 3, figsize=(15.5, 5.6))
+    fig, (ax_det, ax_resp, ax_trig) = plt.subplots(1, 3, figsize=(18.0, 6.2))
     _draw_all_panels(ax_det, ax_resp, ax_trig, agg)
-    fig.tight_layout()
+    fig.tight_layout(w_pad=2.2)
     _savefig(fig, "fig_hx_all_variants_latency.png")
 
     # Portrait, 3 panels stacked -- for a narrow poster column. Each panel
-    # gets the figure's FULL width now (not a third of it), so the same
-    # short-code x-labels have far more breathing room per bar than in the
-    # landscape layout above.
-    fig_v, (ax_det_v, ax_resp_v, ax_trig_v) = plt.subplots(3, 1, figsize=(6.0, 9.5))
+    # gets the figure's FULL width now (not a third of it). Wider + taller
+    # than before, with explicit hspace (not just tight_layout's h_pad) --
+    # at the larger poster font size, the rotated multi-line y-axis label on
+    # one panel was tall enough to overlap the x-tick labels of the panel
+    # above it.
+    fig_v, (ax_det_v, ax_resp_v, ax_trig_v) = plt.subplots(3, 1, figsize=(8.5, 15.5))
     _draw_all_panels(ax_det_v, ax_resp_v, ax_trig_v, agg)
-    fig_v.tight_layout(h_pad=1.6)
+    # top<1.0 reserves margin above the first panel -- its rotated multi-line
+    # y-axis label was tall enough to clip against the figure's top edge.
+    fig_v.subplots_adjust(hspace=0.55, left=0.20, top=0.95, bottom=0.04)
     _savefig(fig_v, "fig_hx_all_variants_latency_vertical.png")
 
 

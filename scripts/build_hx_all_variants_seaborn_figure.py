@@ -220,51 +220,86 @@ def _bar(ax, df, x_col, y_col, order, ref_line=None, ref_label=None,
         for bar, sig, yhi in zip(bars, sub[star_col], sub[y_col] if "ci_hi" not in sub.columns else sub["ci_hi"]):
             if sig:
                 ax.text(bar.get_x() + bar.get_width() / 2, yhi + 0.012, "*",
-                        ha="center", va="bottom", fontsize=14, color=INK_PRIMARY, fontweight="bold")
+                        ha="center", va="bottom", fontsize=24, color=INK_PRIMARY, fontweight="bold")
 
     if ref_line is not None:
         ax.axhline(ref_line, color=INK_MUTED, linewidth=1.3, linestyle="--", zorder=2)
-        ax.text(len(labels) - 0.4, ref_line + 0.008, ref_label, ha="right", va="bottom",
-                fontsize=8.5, color=INK_SECONDARY, style="italic")
+        # Stacked under the "* BH-significant..." caption (same left anchor,
+        # one line down), not next to the dashed line itself and not beside
+        # that caption -- at the larger poster font size and this column's
+        # narrow width, either placement collides: next to the line hits the
+        # error bars/stars, and side-by-side-at-the-top text is wide enough
+        # to overlap the other caption.
+        ax.text(0.01, 0.90, ref_label, transform=ax.transAxes, ha="left", va="top",
+                fontsize=14, color=INK_SECONDARY, style="italic")
 
     if pct:
         ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1.0))
-    ax.tick_params(axis="y", colors=INK_SECONDARY, labelsize=9)
-    ax.tick_params(axis="x", colors=INK_PRIMARY, labelsize=8.5)
+    ax.tick_params(axis="y", colors=INK_SECONDARY, labelsize=16)
+    ax.tick_params(axis="x", colors=INK_PRIMARY, labelsize=15)
     if rotate:
         plt.setp(ax.get_xticklabels(), rotation=rotate, ha="right", rotation_mode="anchor")
     ax.grid(axis="x", visible=False)
     sns.despine(ax=ax, left=False, bottom=True)
 
 
-def main() -> None:
-    grip_df = load_grip_panel()
-    sac_her_grip = load_sac_her_grip_rate()
-
-    fig = plt.figure(figsize=(12.5, 9.0))
-    gs = fig.add_gridspec(2, 2, height_ratios=[1.25, 1.0], hspace=0.45, wspace=0.28)
-    ax_grip = fig.add_subplot(gs[0, :])
-    ax_succ = fig.add_subplot(gs[1, 0])
-    ax_safe = fig.add_subplot(gs[1, 1])
-
+def _draw_all_panels(ax_grip, ax_succ, ax_safe, grip_df, sac_her_grip) -> None:
+    # short_labels=True (not the descriptive "(+L4 down-weight)" etc. labels)
+    # in both layouts now -- at the larger poster font size, the two-line
+    # descriptive labels are wide enough to overlap their neighbors even in
+    # the landscape layout. The mechanism names belong in the caption text,
+    # not packed into the x-axis, matching how Fig 2's HX/HX2/... labels
+    # already work.
     _bar(ax_grip, grip_df, "variant", "success_rate", VARIANT_ORDER,
          ref_line=sac_her_grip, ref_label=f"sac_her, no recovery ({sac_her_grip:.1%})",
-         star_col="significant_bh")
-    ax_grip.set_ylim(0, 0.30)
-    ax_grip.set_ylabel("Success rate\n(grip_state_falsification)", fontsize=10.5, color=INK_PRIMARY)
-    ax_grip.text(0.01, 0.97, "* BH-significant improvement vs. v4 (p<0.05)",
-                 transform=ax_grip.transAxes, ha="left", va="top", fontsize=8.5,
+         star_col="significant_bh", short_labels=True)
+    # Extra headroom above the highest error bar/star (~0.24) so the two
+    # stacked caption lines (axes-fraction y=0.90/0.99) have clear space and
+    # don't overlap the significance stars at the larger poster font size.
+    ax_grip.set_ylim(0, 0.42)
+    ax_grip.set_ylabel("Success rate\n(grip_state_falsification)", fontsize=17, color=INK_PRIMARY)
+    ax_grip.text(0.01, 0.99, "* BH-significant improvement vs. v4 (p<0.05)",
+                 transform=ax_grip.transAxes, ha="left", va="top", fontsize=14,
                  color=INK_MUTED, style="italic")
 
     _bar(ax_succ, OVERALL_STATS, "variant", "overall_success", VARIANT_ORDER, short_labels=True)
     ax_succ.set_ylim(0.30, 0.35)
-    ax_succ.set_ylabel("Overall success rate\n(pooled, all 11 conditions)", fontsize=9.5, color=INK_PRIMARY)
+    ax_succ.set_ylabel("Overall success rate\n(pooled, all 11 conditions)", fontsize=16, color=INK_PRIMARY)
 
     _bar(ax_safe, OVERALL_STATS, "variant", "safety_violation", VARIANT_ORDER, short_labels=True)
     ax_safe.set_ylim(0, 0.0016)
-    ax_safe.set_ylabel("Safety violation rate\n(pooled, all 11 conditions)", fontsize=9.5, color=INK_PRIMARY)
+    ax_safe.set_ylabel("Safety violation rate\n(pooled, all 11 conditions)", fontsize=16, color=INK_PRIMARY)
 
+
+def main() -> None:
+    grip_df = load_grip_panel()
+    sac_her_grip = load_sac_her_grip_rate()
+
+    # Landscape, 2x2 grid (grip panel spans the top row) -- for full-width use.
+    # Wider figure + more wspace than before -- at the larger poster font
+    # size, the safety-violation panel's y-axis label was wide enough to
+    # bleed into the success-rate panel next to it.
+    fig = plt.figure(figsize=(15.0, 9.0))
+    gs = fig.add_gridspec(2, 2, height_ratios=[1.25, 1.0], hspace=0.45, wspace=0.45)
+    ax_grip = fig.add_subplot(gs[0, :])
+    ax_succ = fig.add_subplot(gs[1, 0])
+    ax_safe = fig.add_subplot(gs[1, 1])
+    _draw_all_panels(ax_grip, ax_succ, ax_safe, grip_df, sac_her_grip)
     _savefig(fig, "fig_hx_all_variants_comparison.png", pad_inches=0.15)
+
+    # Portrait, 3 panels stacked -- for a narrow poster column, matching the
+    # same "_vertical" treatment already used for the latency figure
+    # (scripts/build_hx_all_variants_latency_figure.py). Each of the three
+    # charts now gets the figure's FULL width instead of half (succ/safe
+    # were side by side in the landscape version), consistent with how this
+    # panel sits alongside the other two (already-vertical) poster panels.
+    fig_v = plt.figure(figsize=(6.5, 12.5))
+    gs_v = fig_v.add_gridspec(3, 1, height_ratios=[1.3, 1.0, 1.0], hspace=0.5)
+    ax_grip_v = fig_v.add_subplot(gs_v[0])
+    ax_succ_v = fig_v.add_subplot(gs_v[1])
+    ax_safe_v = fig_v.add_subplot(gs_v[2])
+    _draw_all_panels(ax_grip_v, ax_succ_v, ax_safe_v, grip_df, sac_her_grip)
+    _savefig(fig_v, "fig_hx_all_variants_comparison_vertical.png", pad_inches=0.15)
 
 
 if __name__ == "__main__":

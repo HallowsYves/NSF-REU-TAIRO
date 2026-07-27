@@ -88,6 +88,29 @@ LEVEL4_CLASSIFIER_PATH = "results/classifier_level4/level4_classifier.pkl"
 # in evaluation/metrics.py, always a rate-based metric across many episodes.
 BENCHMARK_SUMMARY_PATH = "results/data_recovery_v4/phase6_summary_sac_her_pickandplace_clean_2M.csv"
 
+# sac_her_recovery_v4_hx6's own C1-C5 (the controller this app actually
+# runs -- see recovery_step_hx6 below). Built by
+# scripts/build_recovery_v4_hx6_phase6_summary.py from the already-verified,
+# committed results/hx6_solo_trustworthiness_table.md (n=450, seeds 0-14),
+# not re-derived from results/data_recovery_v4_hx6/episode_results_...csv
+# directly -- that file has no B1 sac_her baseline rows, so recomputing C5
+# from it alone silently collapses to reliability_score instead of
+# max(0, hx6_success - sac_her_success). Same phase6_summary schema as
+# BENCHMARK_SUMMARY_PATH above, so lookup_benchmark_row() works unchanged.
+BENCHMARK_SUMMARY_HX6_PATH = "results/data_recovery_v4_hx6/phase6_summary_sac_her_pickandplace_clean_2M.csv"
+
+
+def _require_path(path: str) -> str:
+    """Clear error instead of a bare FileNotFoundError/pickle traceback when
+    the app is launched from outside the repo root -- all artifact paths
+    here are cwd-relative."""
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            f"{path} not found -- run `streamlit run app/live_attack_demo.py` "
+            "from the repo root (NSF-REU-TAIRO/)."
+        )
+    return path
+
 # A concrete example of recovery flipping a failed episode into a success --
 # taken directly from the committed episode CSVs (results/data_recovery_v4/
 # and results/data_recovery_v4_hx2/episode_results_sac_her_pickandplace_
@@ -167,8 +190,8 @@ def load_recovery_v4_artifacts():
     only model this demo runs), and safe to share across sessions and
     across both panes.
     """
-    classifier_path = os.path.join(CLASSIFIER_SEEDFIX_DIR, "online_failure_classifier.pkl")
-    calibration_path = os.path.join(CLASSIFIER_SEEDFIX_DIR, "recovery_v4_trigger_calibration.pkl")
+    classifier_path = _require_path(os.path.join(CLASSIFIER_SEEDFIX_DIR, "online_failure_classifier.pkl"))
+    calibration_path = _require_path(os.path.join(CLASSIFIER_SEEDFIX_DIR, "recovery_v4_trigger_calibration.pkl"))
     with open(classifier_path, "rb") as f:
         classifier = pickle.load(f)
     with open(calibration_path, "rb") as f:
@@ -181,13 +204,18 @@ def load_level4_classifier():
     """Level 4 (attack-family) classifier -- required by recovery_step_hx6
     in addition to the online failure classifier. Loaded once, same pattern
     as load_recovery_v4_artifacts()."""
-    with open(LEVEL4_CLASSIFIER_PATH, "rb") as f:
+    with open(_require_path(LEVEL4_CLASSIFIER_PATH), "rb") as f:
         return pickle.load(f)
 
 
 @st.cache_resource
 def load_benchmark_summary() -> pd.DataFrame:
-    return pd.read_csv(BENCHMARK_SUMMARY_PATH)
+    return pd.read_csv(_require_path(BENCHMARK_SUMMARY_PATH))
+
+
+@st.cache_resource
+def load_benchmark_summary_hx6() -> pd.DataFrame:
+    return pd.read_csv(_require_path(BENCHMARK_SUMMARY_HX6_PATH))
 
 
 def lookup_benchmark_row(df: pd.DataFrame, method: str, condition: str, attack_level: float):
@@ -605,17 +633,17 @@ def render_trustworthiness_section(slot, condition: str, attack_level: float) ->
         st.divider()
         st.markdown("**How this compares to the full benchmark**")
         st.caption(
-            "From the committed 5-seed × 30-episode-per-seed evaluation "
-            "(results/data_recovery_v4), not just this one run. NOTE: this "
-            "table still shows plain sac_her_recovery_v4's committed C1-C5 "
-            "numbers, not v4-HX6's (the recovery pane above runs v4-HX6, "
-            "but no trustworthiness-score summary has been built for it "
-            "yet) -- shown as an approximate predecessor reference only, "
-            "not a v4-HX6-specific number."
+            "sac_her from the committed 5-seed × 30-episode-per-seed "
+            "evaluation (results/data_recovery_v4); sac_her_recovery_v4_hx6 "
+            "from the committed n=450 (seeds 0-14) HX6 evaluation "
+            "(results/hx6_solo_trustworthiness_table.md, repackaged by "
+            "scripts/build_recovery_v4_hx6_phase6_summary.py) -- not just "
+            "this one run."
         )
         bdf = load_benchmark_summary()
+        hx6_bdf = load_benchmark_summary_hx6()
         base_row = lookup_benchmark_row(bdf, "sac_her", condition, attack_level)
-        rec_row = lookup_benchmark_row(bdf, "sac_her_recovery_v4", condition, attack_level)
+        rec_row = lookup_benchmark_row(hx6_bdf, "sac_her_recovery_v4_hx6", condition, attack_level)
         if base_row is None or rec_row is None:
             st.caption("No committed benchmark row for this condition/magnitude.")
         else:
@@ -625,7 +653,7 @@ def render_trustworthiness_section(slot, condition: str, attack_level: float) ->
                         base_row["reliability_score"], base_row["safety_score"],
                         base_row["recovery_score"], base_row["trustworthiness_score_weighted"],
                     ],
-                    "sac_her_recovery_v4 (reference only, not HX6)": [
+                    "sac_her_recovery_v4_hx6": [
                         rec_row["reliability_score"], rec_row["safety_score"],
                         rec_row["recovery_score"], rec_row["trustworthiness_score_weighted"],
                     ],

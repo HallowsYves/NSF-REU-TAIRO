@@ -30,6 +30,7 @@ child got before dying even when the crash itself isn't catchable.
 import multiprocessing as mp
 import os
 import pickle
+import tempfile
 import threading
 import time
 import traceback
@@ -39,7 +40,7 @@ import numpy as np
 
 import config
 
-WORKER_LOG_PATH = "/tmp/tairo_sim_worker.log"
+WORKER_LOG_PATH = os.path.join(tempfile.gettempdir(), "tairo_sim_worker.log")
 
 
 def _log_path(name: str) -> str:

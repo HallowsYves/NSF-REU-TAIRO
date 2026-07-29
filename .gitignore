@@ -21,6 +21,8 @@ RECOVERY_V4.md
 update_paper.md
 important_update_for_paper.md
 PROJECT_CONTEXT.md
+FINAL_APPROACH.md
+AGENT_ORIENTATION.md
 
 # Per-session working notes / one-off investigation scratch docs — local only
 session_handoff_*.md
@@ -33,6 +35,10 @@ TAIRO_PROJECT_STORY.md
 results/hx6_solo_evaluation_table.md
 results/hx6_solo_trustworthiness_table.md
 results/hx_variants_trustworthiness_table.md
+results/recovery_hx_results_summary.md
+results/final_hx_comparison_summary_table.md
+results/recovery_hx_key_findings_table.md
+results/recovery_hx_success_by_method_condition.md
 
 results/classifier_flat_xgboost/
 results/level2_labels_clean_2M_scoped.csv

@@ -4,8 +4,8 @@ A recovery-aware evaluation framework that benchmarks how cyber-physical attacks
 robotic manipulation policies, and uses failure detection together with recovery-aware control
 to decide when and how a robot should recover.
 
-*Last synced 2026-07-23. Adopted final controller: `sac_her_recovery_v4_hx6` (see
-[Current Status](#current-status) and `FINAL_APPROACH.md`).*
+*Last synced 2026-07-29. Adopted final controller: `sac_her_recovery_v4_hx6` (see
+[Current Status](#current-status)).*
 
 ---
 
@@ -21,7 +21,6 @@ to decide when and how a robot should recover.
 - [Environment Setup](#environment-setup)
 - [Running a Benchmark Sweep](#running-a-benchmark-sweep)
 - [Running the Live Demo](#running-the-live-demo)
-- [Paper](#paper)
 - [Experimental History](#experimental-history)
 
 ---
@@ -59,9 +58,8 @@ object pose spoofing, gripper-state falsification, and contact dropout.
 
 `sac_her_recovery_v4_hx6` is the adopted final controller: it fixes a confirmed regression in
 plain Recovery v4 on `grip_state_falsification` (same fix as HX2), and additionally speeds up
-detection on perception/goal-family attacks without reopening that fix. See `FINAL_APPROACH.md`
-for the full, standalone writeup of what changed and how it compares to every baseline, and
-`RECOVERY_V4.md` plus `CLAUDE.md`'s Level-Chaining Architecture section for implementation detail.
+detection on perception/goal-family attacks without reopening that fix. See
+[Current Status](#current-status) below for how it compares to every baseline.
 
 **Trustworthiness scoring.** A five-component composite trustworthiness score (C1–C5)
 grounded in the NIST AI Risk Management Framework, scoring reliability, robustness, cyber
@@ -90,13 +88,13 @@ resilience, safety, and recovery rather than raw success rate alone.
   condition with a confirmed recovery effect (`grip_state_falsification`), the older hard-override
   baselines (v2/v3) still beat the final controller outright on raw success — because they react
   in ~9 steps vs. v4-HX6's gradual ~87–92-step ramp — but at 30–65× the safety-violation rate.
-  Neither property is hidden in favor of the other; see `FINAL_APPROACH.md` §3.
+  Neither property is hidden in favor of the other; see [Current Status](#current-status) below.
 
 ---
 
 ## Current Status
 
-*(Last synced 2026-07-23.)*
+*(Last synced 2026-07-29.)*
 
 **`sac_her_recovery_v4_hx6` is the adopted final recovery controller**, wired into
 `evaluation/episode_runner.py`, `scripts/run_multiseed_sweep.py`, and the live Streamlit demo.
@@ -112,15 +110,14 @@ It layers two TAIRO-HX-derived refinements onto Recovery v4 (CCAR):
 
 Three intermediate variants (`v4_hx3`, `v4_hx4`, `v4_hx5`) targeted the goal-spoofing latency
 gap directly and were **confirmed nulls**; v4-HX6 was adopted anyway because it is a strict,
-zero-regression improvement over v4-HX2 rather than a new confirmed win — flagged explicitly
-in `FINAL_APPROACH.md` as a different adoption bar than every prior variant in this project.
+zero-regression improvement over v4-HX2 rather than a new confirmed win — a different adoption
+bar than every prior variant in this project.
 
 **Final mentor-requested comparison** (no recovery vs. v2/v3 vs. gradual-response v4 vs. final
 v4-HX6, all 8 requested metrics: task-success rate, clean-task performance, detection delay,
 recovery-response delay, recovery time, safety violations, number of interventions,
-completion-time overhead) is in `results/recovery_hx_results_summary.md` §6 and
-`FINAL_APPROACH.md` §4, with figures in `results/figures/final_hx_comparison/`. It is **not** a
-clean "v4-HX6 wins everywhere" story: v2/v3 still significantly outperform v4-HX6 on
+completion-time overhead), with figures in `results/figures/final_hx_comparison/`. It is
+**not** a clean "v4-HX6 wins everywhere" story: v2/v3 still significantly outperform v4-HX6 on
 `grip_state_falsification` itself — the one condition with a confirmed effect — because of the
 latency gap above; v4-HX6's advantage is a safety-violation rate roughly 1/30th to 1/65th theirs.
 
@@ -131,8 +128,7 @@ committed benchmark. See [Running the Live Demo](#running-the-live-demo) below.
 
 Also complete: the TAIRO-HX hierarchy (Levels 1–5), the online/causal failure-mode classifier
 (six-label taxonomy, Phase 9), and the Phase B/C dense-classifier sweep. The dense-feature
-extension is analytically complete; Tier 2 (broader checkpoint coverage) remains documented
-future work in `RECOVERY_V4.md`.
+extension is analytically complete; Tier 2 (broader checkpoint coverage) remains future work.
 
 ---
 
@@ -143,16 +139,7 @@ matches what you need:
 
 | Doc | What it's for |
 |---|---|
-| `FINAL_APPROACH.md` | **Start here for the current approach.** Standalone explanation of what v4-HX6 is, why each piece exists, and exactly how it compares to every baseline — doesn't assume you've read the others first. |
-| `POSTER_DRAFT.md` | Panel-by-panel draft copy for the IEEE BigData 2026 REU Symposium poster; a condensed, presentation-ready version of `FINAL_APPROACH.md`. |
-| `RECOVERY_V4.md` | Full CCAR + TAIRO-HX design and implementation status, including the complete negative-result history behind `v4_hx3`–`v4_hx5`. |
-| `findings.md` | Phase-by-phase record of the failure-mode classifier workstream (Phases 0–12). |
 | `TAIRO-HX.md` | The five-level hierarchical failure-diagnosis stack itself (task stage → anomaly → failure type → attack family → recovery decision). |
-| `results/recovery_hx_results_summary.md` | Standalone results package (tables, charts, statistical comparisons) built for the poster/video deliverable — best narrative walkthrough of the numbers. |
-| `ATTACK_AWARE_TRACK.md` | The separate attack-aware policy track (ground-truth attack flag as input). |
-| `reported_grasp_contact_options.md` | Reference notes on grasp/contact-detection options considered for the manipulation task. |
-| `update_paper.md` | Verified numbers with source citations, for writing the paper. |
-| `important_update_for_paper.md` | Prioritized checklist of corrections/additions needed before the paper is finalized. |
 
 ---
 
@@ -179,18 +166,13 @@ NSF-REU-TAIRO/
 ├── envs/                        # FetchReach and FetchPickAndPlace env wrappers
 ├── evaluation/                  # Episode runner, attack dispatch, metrics, labeling,
 │                                #   causal feature builder (Phase 9)
-├── paper/
-│   └── NSF_REU_2026_TAIRO_WEEK_8/
-│       ├── TAIRO_PAPER.tex      # Draft 3 (current working paper)
-│       ├── TAIRO_PAPER.cls
-│       ├── references.bib
-│       └── paper_figures/       # 9 committed figures (5 main + 3 Recovery v4 + 1 framework)
+├── paper/                       # Paper draft (LaTeX, figures) — local only, gitignored
 ├── policies/                    # Rule-based and SAC+HER policy wrappers
 ├── recovery/                    # v2 (step-at-a-time), v3 (sustained window),
 │                                #   v4 (CCAR), v4_hx..v4_hx6 (TAIRO-HX variants —
-│                                #   v4_hx6 is the adopted variant; see RECOVERY_V4.md)
+│                                #   v4_hx6 is the adopted variant)
 ├── scripts/                     # Sweep entrypoint, figure builders, training scripts,
-│                                #   diagnostic/calibration scripts (see findings.md for history)
+│                                #   diagnostic/calibration scripts —
 │                                #   build_final_hx_comparison.py / build_final_hx_figures.py —
 │                                #   the final mentor-requested 4-arm comparison
 ├── training/                    # SAC+HER training, attack-aware and single-attack wrappers
@@ -209,16 +191,12 @@ NSF-REU-TAIRO/
 │   ├── figures/                 # Diagnostic and publication plots, incl.
 │   │                            #   figures/final_hx_comparison/ (final 4-arm figures)
 │   └── archive/                 # Pre-fix data (README committed; CSVs gitignored)
-├── RECOVERY_V4.md               # CCAR + TAIRO-HX design and implementation status
-├── FINAL_APPROACH.md            # Standalone writeup: final approach vs. every baseline
-├── POSTER_DRAFT.md              # IEEE BigData 2026 REU Symposium poster draft copy
-├── TAIRO-HX.md                  # The five-level hierarchical failure-diagnosis stack
-├── reported_grasp_contact_options.md # Grasp/contact-detection design notes
-├── important_update_for_paper.md# Pre-submission paper update checklist
-├── findings.md                  # Phase-by-phase failure-mode classifier findings (Phases 0–12)
-├── ATTACK_AWARE_TRACK.md        # Attack-aware policy track (ground-truth flag)
-└── update_paper.md              # Paper-writing guide with verified numbers and source citations
+└── TAIRO-HX.md                  # The five-level hierarchical failure-diagnosis stack
 ```
+
+> A number of other project-tracking `.md` docs (design history, phase-by-phase findings,
+> session handoffs, paper-writing notes) exist locally for development continuity but are
+> gitignored and intentionally not part of the public repo.
 
 > **Note:** an earlier version of this structure listed a top-level `notebooks/` directory that
 > no longer appears in the repo file listing — worth confirming whether it was removed
@@ -228,7 +206,7 @@ The `results/` tree is fully gitignored except for episode-result CSVs (not the 
 per-step logs) across `results/data_recovery_v4*/` — this includes the Phase 6 evaluation,
 the dense sweep, every TAIRO-HX variant's evaluation, the v2/v3 backfill, and the seeds-5-14
 power-check directories — plus `results/archive/README.md` and small metrics/summary CSVs
-under `results/classifier_level1/`, `results/classifier_level4/`, `results/final_hx_comparison_*`.
+under `results/classifier_level1/`, `results/classifier_level4/`.
 All large artifacts (models, per-step-log CSVs, classifier pickles) must be obtained from the
 source TAIRO repo or regenerated locally.
 
@@ -302,11 +280,11 @@ otherwise-failed episode (see `app/live_attack_demo.py`'s `SUGGESTED_EXAMPLE`).
 
 ## Experimental History
 
-Full phase-by-phase record of the failure-mode classifier workstream (Phases 0–12,
-including the TAIRO-HX hierarchy build and the recovery-integration/final-comparison work)
-lives in `findings.md`. Recovery v4 + TAIRO-HX design, implementation, and evaluation
-details are in `RECOVERY_V4.md`; the final approach and its comparison against every baseline
-is in `FINAL_APPROACH.md`. Attack-aware policy track is in `ATTACK_AWARE_TRACK.md`.
-`results/recovery_hx_results_summary.md` is the standalone results package (tables, charts,
-statistical comparisons, interpretations) built for the poster/video deliverable — start
-there for a narrative walkthrough rather than the raw phase-by-phase logs.
+The project moved through several phases: baseline SAC+HER evaluation across all 11 attack
+conditions, a failure-mode classifier workstream (a six-label taxonomy plus an online/causal
+classifier), the Recovery v2/v3 hard-threshold controllers, Recovery v4's classifier-conditioned
+adaptive blend (CCAR), and finally the TAIRO-HX hierarchy (task stage → anomaly → failure type
+→ attack family → recovery decision) feeding into the adopted `v4-HX6` controller. A scoped,
+separate attack-aware policy track (a ground-truth attack-category flag injected into SAC+HER
+training) was explored but not carried through to completion. Detailed phase-by-phase design
+and experiment notes are kept as local development records outside the public repo.

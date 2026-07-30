@@ -6,8 +6,8 @@ scripts/build_level1_labels.py.
 
 Standalone classifier only -- no upstream chaining (no Level 2/3/4 predicted
 classes as inputs). Out-of-fold chaining plumbing doesn't exist yet, so full
-hierarchical chaining stays separate, later work per CLAUDE.md's
-Level-Chaining Architecture decision.
+hierarchical chaining stays separate, later work per the Level-Chaining
+Architecture decision.
 
 Same RF setup, seed split, and core eval suite as scripts/train_level4_classifier.py
 -- reused closely where applicable. Two differences from that template

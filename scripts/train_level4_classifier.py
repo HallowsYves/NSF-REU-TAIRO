@@ -7,7 +7,7 @@ scripts/build_level4_labels.py.
 Standalone classifier only -- no upstream chaining (no Level 2/3 predicted
 classes as inputs). Level 3's own classifier and the out-of-fold chaining
 plumbing don't exist yet, so full hierarchical chaining stays separate,
-later work per CLAUDE.md's Level-Chaining Architecture decision.
+later work per the Level-Chaining Architecture decision.
 
 Same RF setup, seed split, and eval suite as scripts/train_causal_classifier.py
 (Phase 9B) -- reused verbatim where applicable. Does NOT save a model yet:
@@ -15,7 +15,7 @@ this build has no downstream consumer, same reasoning Phase 9B used before
 Phase 9C's production save.
 
 Clean rows (attack_family is NaN) are EXCLUDED, not trained as a 5th class
-(decided 2026-07-20, see CLAUDE.md "Level 4 (Attack Family) Labeling"):
+(decided 2026-07-20, "Level 4 (Attack Family) Labeling"):
 Level 4 has no "clean" class in the memo, and clean-vs-not is Level 2's job.
 `unknown_attack` is also never trained on -- it has zero ground-truth rows
 (never assigned to any of the 11 conditions in ATTACK_FAMILY_MAP), so it

@@ -2,7 +2,7 @@
 Item 1 Phase 1b (step 3) — Finalize Level 2 (anomaly detection) categorical
 labels from the Phase 1a Candidate D p_fail scores.
 
-Decision locked in 2026-07-20 (see CLAUDE.md "Level 2 (Anomaly Detection)
+Decision locked in 2026-07-20 ("Level 2 (Anomaly Detection)
 Scope Limitation"):
 
   - Level 2's categorical output is scoped to the clean_2M checkpoint only.

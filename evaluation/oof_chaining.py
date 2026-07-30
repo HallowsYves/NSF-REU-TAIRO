@@ -2,7 +2,7 @@
 TAIRO-HX hierarchical level-chaining — generic out-of-fold (OOF) prediction
 utility.
 
-Per CLAUDE.md's "Level-Chaining Architecture" decision, each level in the
+Per the "Level-Chaining Architecture" decision, each level in the
 Level 1->2->3->4 pipeline is a separate model that receives the level
 immediately upstream's predicted class (one-hot) + one confidence scalar
 (max class probability) as additional input features -- never the full
@@ -57,8 +57,8 @@ def get_oof_predictions(df, feature_cols, label_col, train_seeds, test_seed,
         probability (e.g. Level 2's p_fail = 1 - proba["success"]), not just
         the argmax. NEVER pass this full-vector frame into a downstream
         level's feature set directly -- only `onehot_upstream()`'s
-        class+confidence schema is allowed downstream, per CLAUDE.md's
-        chaining decision.
+        class+confidence schema is allowed downstream, per the
+        Level-Chaining Architecture decision.
     """
     rf_kwargs = rf_kwargs or DEFAULT_RF_KWARGS
     prefix = prefix or label_col
@@ -136,7 +136,8 @@ def onehot_upstream(preds, prefix, all_classes):
     One-hot encode `{prefix}_pred_class` (fixed column set = `all_classes`,
     so unseen-in-this-split classes still get a zero column) and keep
     `{prefix}_confidence` alongside -- the exact "predicted class (one-hot)
-    + one confidence scalar" schema CLAUDE.md's chaining decision specifies.
+    + one confidence scalar" schema the Level-Chaining Architecture decision
+    specifies.
     """
     onehot = pd.get_dummies(preds[f"{prefix}_pred_class"], prefix=prefix)
     onehot = onehot.reindex(columns=[f"{prefix}_{c}" for c in all_classes], fill_value=0)

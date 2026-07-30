@@ -1,7 +1,7 @@
 """
 Recovery v4-HX: stage-gated extension of Recovery v4 Tier 1 CCAR.
 
-Mentor-directed (2026-07-20, see PROJECT_CONTEXT.md and CLAUDE.md's
+Mentor-directed (2026-07-20, see PROJECT_CONTEXT.md's
 "Level 5 (Recovery Decision) — standing decision"): the TAIRO-HX classifier
 hierarchy should actually improve recovery, not stay a separate offline
 analysis track. `recovery/recovery_v4.py`'s CCAR conditions only on its own
@@ -12,7 +12,7 @@ Level 1 conditioning on top of the existing, unmodified CCAR mechanism.
 Additive only -- `recovery_v4.py` is untouched. This is a NEW method
 variant (`sac_her_recovery_v4_hx`), not a replacement, so it is directly
 A/B-able against the already-evaluated `sac_her_recovery_v4` results
-without risk to what's already paper-facing (CLAUDE.md section 14).
+without risk to what's already paper-facing.
 
 Design (confirmed via sign-off):
   - Level 1's task stage is computed ONLINE, for free -- it is a

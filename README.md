@@ -15,8 +15,10 @@ to decide when and how a robot should recover.
 - [Approach](#approach)
 - [Key Findings](#key-findings)
 - [Current Status](#current-status)
+- [Recovery Variant Comparison: HX Through HX6](#recovery-variant-comparison-hx-through-hx6)
 - [Team and Acknowledgments](#team-and-acknowledgments)
 - [Repository Structure](#repository-structure)
+  - [Regenerating the Gitignored Artifacts](#regenerating-the-gitignored-artifacts)
 - [Environment Setup](#environment-setup)
 - [Running a Benchmark Sweep](#running-a-benchmark-sweep)
 - [Running the Live Demo](#running-the-live-demo)
@@ -131,14 +133,324 @@ extension is analytically complete; Tier 2 (broader checkpoint coverage) remains
 
 ---
 
-## Documentation Map
+## Recovery Variant Comparison: HX Through HX6
 
-The repo has several standalone `.md` docs at different levels of depth. Start with whichever
-matches what you need:
+*Last updated 2026-07-23. All numbers are n=450 (seeds 0–14, all 11 attack conditions,
+clean_2M PickAndPlace checkpoint) unless otherwise noted. Benjamini-Hochberg FDR-corrected
+for multi-variant comparisons.*
 
-| Doc | What it's for |
-|---|---|
-| `TAIRO-HX.md` | The five-level hierarchical failure-diagnosis stack itself (task stage → anomaly → failure type → attack family → recovery decision). |
+### Baseline: Recovery v4 (CCAR)
+
+**File:** `recovery/recovery_v4.py`
+
+Classifier-Conditioned Adaptive Recovery — the starting point for all HX variants.
+
+**Core formula:**
+```python
+final_action = (1-w) * policy_action + w * recovery_action
+```
+
+where `w` is an EMA-smoothed blend weight derived from the online failure-mode classifier's
+`p_fail` output, and `recovery_action` is a weighted mixture of five hand-built expert
+controllers.
+
+**Five experts:** `transport_expert`, `relocalization_expert`, `grasp_stabilize_expert`,
+`regrasp_expert`, `approach_expert`.
+
+**Trigger mechanism:** `TriggerWeight` class in `recovery_v4.py`. When `p_fail` rises, alpha
+increases (faster blend); when it falls, alpha decreases (slower retreat). The weight crosses
+activation thresholds gradually, not instantly.
+
+**Known defect (from `recovery_do_no_harm_audit.csv`):** Plain v4 does statistically
+significant **harm** on `grip_state_falsification` relative to doing nothing: 19.8% → 14.0%
+success (BH p=0.00017). This is the motivating problem that HX2 was built to fix.
+
+### HX (v1) — Level 1 Stage-Gating
+
+**File:** `recovery/recovery_v4_hx.py` (~126 lines)
+
+**Motivation.** The five expert controllers in v4 are designed for different task phases
+(approach, grasp, transport, etc.). Without stage-gating, a transport expert could fire during
+the approach phase and steer the arm toward the goal prematurely, or a grasp expert could fire
+after the object is already transported and push the arm back.
+
+**Implementation.** New function `compute_task_stage_online()` — a 5-feature priority cascade
+computed from `feature_vec`:
+
+```
+is_success_now → verifying_completion
+grasp_kinematic_ever_sofar → transporting
+dttg_now < LEVEL1_PLACE_RADIUS → placing
+contact_streak_now >= 1 → grasping
+reached_ever_sofar → aligning_gripper
+otherwise → approaching_object
+```
+
+Modified `compute_recovery_action_hx()` — each expert's weight is multiplied by a
+`stage_factor`: `1.0` if the current `task_stage` is in the expert's compatible stage set,
+`config.STAGE_EXPERT_SOFT_WEIGHT` (0.15) otherwise (soft, not hard-zero). Stage-expert
+compatibility mapping from `config.STAGE_EXPERT_COMPAT` — e.g., `approach_expert` is
+compatible with `approaching_object` and `aligning_gripper`; `transport_expert` is compatible
+with `transporting` and `placing`.
+
+**Results.**
+
+| Condition | v4 success | HX success | Delta | BH-adjusted p |
+|---|---|---|---|---|
+| `object_pose_spoof` | 28.2% | 21.3% | -6.9pp | 0.180 |
+| All other conditions | — | — | ~0 | ~1.0 |
+
+**No confirmed benefit on any condition.** The `object_pose_spoof` regression (-6.9pp) is not
+significant after full-grid BH correction (p=0.180). Stage-gating does not improve recovery
+performance and was not adopted.
+
+### HX2 (v2) — + Level 4 Attack-Family Down-Weight
+
+**File:** `recovery/recovery_v4_hx2.py` (~95 lines)
+
+**Motivation.** Plain v4 does significant harm on `grip_state_falsification` (19.8% → 14.0%).
+Root cause: `grip_state_falsification` is an `action_actuation`-family attack — it corrupts
+the command channel itself. A recovery expert that reasons about *state* (object position,
+gripper aperture) has no leverage there; blending its output adds noise on an already-corrupted
+actuation path.
+
+**Implementation.** Adds Level 4 (attack-family) classifier query **after**
+`compute_recovery_action_hx()` returns:
+
+```python
+l4_pred_class = level4_classifier["label_encoder"].inverse_transform([l4_pred])[0]
+l4_confidence = l4_probs.max()
+
+if l4_pred_class == "action_actuation" and l4_confidence >= config.LEVEL4_CONFIDENT_THRESH:
+    family_factor = config.LEVEL4_ACTION_ACTUATION_DOWNWEIGHT  # 0.3
+else:
+    family_factor = 1.0
+
+w_adjusted = w * family_factor
+```
+
+Config constants: `config.LEVEL4_ACTION_ACTUATION_DOWNWEIGHT = 0.3` (blend weight multiplier
+on action_actuation predictions), `config.LEVEL4_CONFIDENT_THRESH = 0.5` (minimum confidence to
+apply the down-weight). Requires `level4_classifier.pkl` (pre-trained Level 4 classifier
+artifact).
+
+**Results.**
+
+| Condition | v4 success | HX2 success | Delta | BH-adjusted p |
+|---|---|---|---|---|
+| `grip_state_falsification` | 14.0% | 18.2% | **+4.2pp** | **0.0034** |
+| All other conditions | — | — | ~0 | ~1.0 |
+
+**Confirmed win on target condition.** HX2 restores `grip_state_falsification` to statistical
+parity with `sac_her` no-recovery (18.2% vs 19.8%, BH p=0.825) and produces a significant win
+over plain v4 itself. This is the only confirmed positive result across all HX variants.
+**Do-no-harm verification** (`recovery_do_no_harm_audit.csv`): HX2 is the only recovery variant
+with zero confirmed harm across all 11 conditions.
+
+### HX3 (v3) — Re-gate relocalization_expert on Level 4
+
+**File:** `recovery/recovery_v4_hx3.py` (~110 lines)
+
+**Motivation.** `object_pose_spoof` episodes were routed to the `relocalization_expert` (whose
+weight is `spoofed_goal`), but the classifier almost never predicts `spoofed_goal` for those
+episodes — it predicts `never_reached_object`. The relocalization expert was starved of
+activation on exactly the episodes it was designed to fix.
+
+**Implementation.** Sets the spoofed-goal class probability to the maximum of its classifier
+value and the Level 4 `perception_state` probability:
+
+```python
+adjusted_class_probs["spoofed_goal"] = max(
+    class_probs["spoofed_goal"],
+    l4_probs["perception_state"]
+)
+```
+
+Plain `max()`, no new config constant. The rest of `compute_recovery_action_hx()` is unchanged.
+
+**Results.**
+
+| Condition | v4 success | HX3 success | Delta vs v4 | BH p |
+|---|---|---|---|---|
+| `object_pose_spoof` | 28.2% | 26.0% | -2.2pp | 1.0 |
+| `grip_state_falsification` | 14.0% | 19.1% | +5.1pp (vs v4) / +0.9pp (vs HX2) | 0.000034 / 1.0 |
+
+**Genuine null on target.** The `object_pose_spoof` change is non-significant (BH p=1.0). HX3
+preserves HX2's `grip_state_falsification` win (+5.1pp vs v4). Not adopted.
+
+### HX4 (v4) — Full Expert Remap for Goal-Spoofing
+
+**File:** `recovery/recovery_v4_hx4.py` (~192 lines)
+
+**Motivation.** `goal_spoof_immediate` and `goal_spoof_midep` showed no recovery benefit in
+HX3 — the routing fix didn't move the needle. HX4 tests a stronger hypothesis: that
+`spoofed_goal` was assigned to the wrong expert entirely, and that the transport expert (which
+reasons about object position relative to goal) is the right one for goal-spoofing.
+
+**Implementation.** Full expert remap:
+
+```python
+adjusted_class_probs["transport"] = (
+    class_probs["divergent_transport"] + class_probs["spoofed_goal"]
+)
+adjusted_class_probs["relocalization"] = l4_probs["perception_state"]
+```
+
+`scheduled_classes` for `transport_expert` changed from `["divergent_transport"]` to
+`["divergent_transport", "spoofed_goal"]`. Both experts retain their original
+stage-compatibility masks.
+
+**Results.**
+
+| Condition | v4 success | HX4 success | Delta vs v4 | BH p |
+|---|---|---|---|---|
+| `goal_spoof_immediate` | 10.2% | 10.4% | +0.2pp | 1.0 |
+| `goal_spoof_midep` | 10.4% | 10.9% | +0.4pp | 1.0 |
+| `grip_state_falsification` | 14.0% | 18.9% | +4.9pp | 0.000066 |
+
+**Genuine null on target.** Goal-spoofing improvement is non-significant. HX4 preserves HX2's
+`grip_state_falsification` win. Not adopted.
+
+### HX5 (v5) — Global Fast-Attack Trigger EMA
+
+**File:** `recovery/recovery_v4_hx5.py` (~141 lines)
+
+**Motivation.** The investigation into why recovery shows no benefit on goal-spoofing shifted
+from expert routing to trigger timing. Analysis: on `goal_spoof_immediate` (attacked from step
+0), `w` doesn't cross the minimum activation threshold until step ~16, and is still only ~24%
+strength by step 39. In a 150-step episode, losing the first 40–60+ steps to a diluted or
+absent correction plausibly explains most of the gap.
+
+**Implementation.** New class `FastAttackTriggerWeight(TriggerWeight)`. Overrides `update()`:
+
+```python
+if p_fail > self.ema_pfail:  # rising = new failure detected
+    effective_alpha = self.alpha * config.RECOVERY_V4_HX5_ATTACK_ALPHA_MULTIPLIER
+else:
+    effective_alpha = self.alpha  # original speed on falling side
+```
+
+`RECOVERY_V4_HX5_ATTACK_ALPHA_MULTIPLIER = 4.0` (in `config.py`). Applies **globally** — the
+fast EMA fires on all attack conditions when `p_fail` rises, not just goal-spoofing. Verified
+trigger speedup: `w` crosses `EPSILON` by step 3–4 instead of step 16 on `goal_spoof_immediate`.
+By step 39: `w` ≈ 0.65 (vs v4's 0.24).
+
+**Results.**
+
+| Condition | v4 success | HX5 success | Delta vs v4 | BH p |
+|---|---|---|---|---|
+| `goal_spoof_immediate` | 10.2% | 9.8% | -0.4pp | 1.0 |
+| `goal_spoof_midep` | 10.4% | 12.2% | +1.8pp | 1.0 |
+| `grip_state_falsification` | 14.0% | 16.7% | +2.7pp | 0.756 (raw p=0.058) |
+
+**Genuine null on target, plus regression risk.** Goal-spoofing improvement is non-significant.
+The `grip_state_falsification` win weakens from HX2's +4.2pp to HX5's +2.7pp (raw p=0.058, not
+BH-significant but a soft signal of regression). The global speedup changes trigger behavior on
+the one condition HX2 fixed. Not adopted.
+
+### HX6 (v6) — Level-4-Gated Fast-Attack Trigger (FINAL)
+
+**File:** `recovery/recovery_v4_hx6.py` (~153 lines)
+
+**Motivation.** HX5's global speedup was too broad — it improved trigger timing on
+goal-spoofing but degraded behavior on `grip_state_falsification` (an `action_actuation`
+condition where the trigger should not change speed). The fix: apply HX5's fast EMA **only**
+when Level 4 predicts an attack family that actually needs faster response.
+
+**Implementation.** New class `GatedFastAttackTriggerWeight(TriggerWeight)`. Overrides
+`update()` with two extra arguments (`l4_pred_class`, `l4_confidence`):
+
+```python
+if p_fail > self.ema_pfail:
+    l4_attack_needs_speedup = (
+        l4_pred_class in {"perception_state", "goal_manipulation"}
+        and l4_confidence >= config.LEVEL4_CONFIDENT_THRESH
+    )
+    if l4_attack_needs_speedup:
+        effective_alpha = self.alpha * config.RECOVERY_V4_HX5_ATTACK_ALPHA_MULTIPLIER
+    else:
+        effective_alpha = self.alpha
+else:
+    effective_alpha = self.alpha
+```
+
+**Key structural change:** Level 4 classification runs **before** `trigger.update()` (in
+HX2–HX5, it ran after). This ensures the fast-attack gate is set before the trigger computes
+its new weight. The same `l4_probs` are reused for the action_actuation down-weight (from HX2).
+Reuses `config.RECOVERY_V4_HX5_ATTACK_ALPHA_MULTIPLIER` and `config.LEVEL4_CONFIDENT_THRESH` —
+no new config constants added.
+
+**Results.**
+
+| Condition | v4 success | HX6 success | Delta vs v4 | BH p |
+|---|---|---|---|---|
+| `grip_state_falsification` | 14.0% | 18.2% | **+4.2pp** | **0.0017** |
+| `grip_state_falsification` vs HX2 | 18.2% | 18.2% | **0.000pp** | **1.0** |
+| `goal_spoof_immediate` | 10.2% | 9.6% | -0.7pp | 1.0 |
+| `goal_spoof_midep` | 10.4% | 11.3% | +0.9pp | 1.0 |
+
+**Identical to HX2 on the one confirmed win** (delta=0.000, BH p=1.0). **No regression on any
+condition.** **Do-no-harm vs sac_her is completely clean** (zero significant harm across all 11
+conditions).
+
+**Overall statistics** (from `final_hx_comparison_summary_table.csv`):
+
+| Metric | HX | HX2 | HX3 | HX4 | HX5 | **HX6** | v4 | v2 | v3 |
+|---|---|---|---|---|---|---|---|---|---|
+| Overall success | 33.00% | 33.47% | 33.62% | 33.42% | 33.38% | **33.47%** | 33.39% | 34.0% | 33.62% |
+| Clean performance | 100% | 100% | 100% | 100% | 100% | **100%** | 100% | 100% | 100% |
+| Safety violation rate | 0.13% | 0.09% | 0.11% | 0.09% | 0.11% | **0.06%** | 0.06% | 2.6% | 4.0% |
+
+**Verdict: adopted as the final controller.** Strict superset of HX2 — preserves its one
+confirmed win (bit-for-bit identical), zero regression risk, adds the gated fast-trigger for
+future use if a Level 4 signal becomes strong enough on goal-spoofing conditions.
+
+### Summary: All Confirmed Significant Results
+
+| Variant | Condition | Success Rate | Improvement vs v4 | BH-adjusted p |
+|---|---|---|---|---|
+| **HX2** | `grip_state_falsification` | 18.2% | +4.2pp | 0.0034 |
+| **HX3** | `grip_state_falsification` | 19.1% | +5.1pp | 0.000034 |
+| **HX4** | `grip_state_falsification` | 18.9% | +4.9pp | 0.000066 |
+| **HX6** | `grip_state_falsification` | 18.2% | +4.2pp | 0.0017 |
+
+**HX3 and HX4's grip_state wins are not independent of HX2** — they inherit HX2's down-weight
+mechanism and add orthogonal changes. The only independently confirmed improvement across all
+variants is HX2's (now adopted in HX6).
+
+### v2/v3 vs. v4-HX Family Tradeoff
+
+From `final_hx_comparison_timing.csv` and `final_hx_comparison_success_safety.csv`:
+
+| | v2/v3 baseline | v4/HX6 |
+|---|---|---|
+| **Trigger mechanism** | Hard-threshold (3 rule-based signals) | Continuous blend (classifier-driven) |
+| **Override style** | Full, unblended | Gradual ramp |
+| **Response time** | ~9 steps to activation | ~14–16 steps to activation |
+| **Time to half-strength** | 0 steps (instant full override) | ~66–77 steps |
+| **C4 safety violation rate** | 2.6% / 4.0% | 0.1% / 0.2% |
+| **Goal-spoofing improvement** | +2.9pp / +4.9pp | None |
+
+**The tradeoff:** v2/v3 trade safety for speed — they detect and override faster, but their
+full unblended override causes more safety violations. v4/HX6 trade speed for safety — they
+ramp in gradually, which is safer but means they lose the first 40–60+ steps of the episode to
+a diluted or absent correction. This tradeoff is architectural, not tunable within either
+framework.
+
+### Bottom Line
+
+1. **HX2 fixed a real harm** in plain v4 — the only independently confirmed positive result
+   across all variants.
+2. **HX3, HX4, HX5, HX6** systematically investigated remaining gaps (object pose spoofing,
+   goal spoofing, trigger speed), all returned genuine nulls on their targets.
+3. **HX6 is adopted** as a safe superset of HX2 — preserves its one confirmed win, zero
+   regression risk, adds the gated fast-trigger for future use.
+4. **The goal-spoof gap is architectural** — v3's hard-override achieves +2.9pp/+4.9pp there
+   because it sacrifices safety; v4's continuous blend achieves 0% there because it prioritizes
+   safety. No variant of v4 closes this gap without reintroducing safety violations.
+
+*(n=450, seeds 0–14, all 11 attack conditions, clean_2M PickAndPlace checkpoint;
+Benjamini-Hochberg FDR-corrected across variant comparisons.)*
 
 ---
 
@@ -197,17 +509,55 @@ NSF-REU-TAIRO/
 > session handoffs, paper-writing notes) exist locally for development continuity but are
 > gitignored and intentionally not part of the public repo.
 
-> **Note:** an earlier version of this structure listed a top-level `notebooks/` directory that
-> no longer appears in the repo file listing — worth confirming whether it was removed
-> intentionally or should be restored/gitignored explicitly.
-
 The `results/` tree is fully gitignored except for episode-result CSVs (not the much larger
 per-step logs) across `results/data_recovery_v4*/` — this includes the Phase 6 evaluation,
 the dense sweep, every TAIRO-HX variant's evaluation, the v2/v3 backfill, and the seeds-5-14
-power-check directories — plus `results/archive/README.md` and small metrics/summary CSVs
-under `results/classifier_level1/`, `results/classifier_level4/`.
-All large artifacts (models, per-step-log CSVs, classifier pickles) must be obtained from the
-source TAIRO repo or regenerated locally.
+power-check directories — plus small metrics/summary CSVs under `results/classifier_level1/`,
+`results/classifier_level4/`, and the train logs under `results/archive/`.
+
+### Regenerating the gitignored artifacts
+
+Models, per-step logs, and classifier pickles aren't published — they're either large
+binaries or derived from other gitignored data. Nothing here needs external hosting; each
+artifact is reproducible from a tracked script, in this dependency order:
+
+1. **SAC+HER checkpoint** (`results/models/sac_her_pickandplace_clean_2M`):
+   ```bash
+   python3 training/train_sac_her.py --env pickandplace --total-timesteps 2000000 \
+       --save-path results/models/sac_her_pickandplace_clean_2M
+   ```
+   (add `--attack-randomization` for the `randomized_*` variants; drop to
+   `--total-timesteps 500000` for the `*_500k` checkpoints.)
+
+2. **Episode/step-log data** (`results/data_seedfix/`) — run the benchmark sweep against
+   that checkpoint (see [Running a Benchmark Sweep](#running-a-benchmark-sweep) below) with
+   `--methods sac_her` across all seeds/conditions. This produces the `step_logs_*.csv` files
+   every downstream classifier is built from.
+
+3. **Causal feature matrix** (`results/classifier_seedfix/causal_feature_matrix.csv`):
+   ```bash
+   python3 scripts/build_causal_feature_matrix.py --classifier-dir results/classifier_seedfix
+   ```
+
+4. **Online failure-mode classifier** (`results/classifier_seedfix/online_failure_classifier.pkl`):
+   ```bash
+   python3 scripts/build_online_classifier.py --classifier-dir results/classifier_seedfix
+   ```
+
+5. **Recovery v4 trigger calibration** (`results/classifier_seedfix/recovery_v4_trigger_calibration.pkl`):
+   ```bash
+   python3 scripts/calibrate_recovery_v4_trigger.py --classifier-dir results/classifier_seedfix
+   ```
+
+6. **Level 4 attack-family classifier** (`results/classifier_level4/level4_classifier.pkl`):
+   ```bash
+   python3 scripts/build_level4_labels.py       # writes results/level4_labels.csv
+   python3 scripts/train_level4_classifier.py --classifier-dir results/classifier_seedfix \
+       --out-dir results/classifier_level4
+   ```
+
+Step 1 is the expensive one (2M env steps); steps 3–6 are all fast (seconds to low minutes)
+once step 2's sweep data exists.
 
 ---
 

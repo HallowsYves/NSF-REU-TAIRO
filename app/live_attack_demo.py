@@ -69,7 +69,7 @@ from recovery.recovery_v4_hx6 import recovery_step_hx6, GatedFastAttackTriggerWe
 from attacks.sensor_attacks import apply_sensor_bias, shift_target, apply_object_pose_spoof
 from app.sim_worker import SimWorker, SimWorkerCrashed
 
-# Seed-fixed classifier/calibration artifacts (see CLAUDE.md section 10 --
+# Seed-fixed classifier/calibration artifacts --
 # config.CLASSIFIER_DIR's default does not contain these; the seedfix dir
 # must be named explicitly, same as run_multiseed_sweep.py's
 # --recovery-v4-classifier-dir convention).
@@ -482,7 +482,7 @@ def step_pane(pane: PaneState, condition: str, attack_level: float) -> None:
 
     # -- C4 jerk metric (per-channel split, matches evaluation/episode_runner.py
     # exactly -- always the last *executed* action (post-recovery-blend for
-    # the recovery pane), never previous_action, per CLAUDE.md section 8) ---
+    # the recovery pane), never previous_action) ---
     if pane.prev_executed is not None:
         pane.arm_jerk = float(np.linalg.norm(executed_action[:3] - pane.prev_executed[:3]))
         pane.grip_jerk = float(abs(executed_action[3] - pane.prev_executed[3]))

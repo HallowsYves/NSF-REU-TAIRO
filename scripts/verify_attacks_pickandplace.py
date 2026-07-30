@@ -108,7 +108,7 @@ def run_diagnostic_episode(env, model, condition: str, seed: int = 0) -> dict:
                 np.asarray(policy_obs["achieved_goal"]) - np.asarray(policy_obs["desired_goal"])
             ))
 
-        # Update previous_action (action_delay sentinel logic from CLAUDE.md)
+        # Update previous_action (action_delay sentinel logic)
         previous_action = (
             intended_action.copy() if condition == "action_delay"
             else executed_action.copy()
@@ -143,7 +143,7 @@ def run_diagnostic_episode(env, model, condition: str, seed: int = 0) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Expected-signature table (from CLAUDE.md investigation prompt)
+# Expected-signature table (from the original investigation prompt)
 # ---------------------------------------------------------------------------
 # zero_frac thresholds (at step 25, mid-episode — some non-zeroed dims near 0
 # in real episodes, so allow ±0.05 tolerance):

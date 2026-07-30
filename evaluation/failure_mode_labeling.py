@@ -18,8 +18,8 @@ Labels
     divergent_transport      — object trajectory diverged from true goal over episode,
                                 OR unclassified fallback (elevated action-norm / safety
                                 signal). Merged 2026-07-11 from the former
-                                `wrong_direction` + `action_control_corruption` split —
-                                see CLAUDE.md §14 changelog for why.
+                                `wrong_direction` + `action_control_corruption` split
+                                (macro-F1 improved 0.622 -> 0.779).
 
 Threshold constants live in config.py (never hardcoded here).
 
@@ -62,7 +62,7 @@ LABEL_SPOOFED_GOAL         = "spoofed_goal"
 # on test seed 4, collapsing further under held-out-condition generalization)
 # and that `action_control_corruption` never actually reflected action-space
 # corruption in this data (tail_action_div identically zero across all 128
-# episodes carrying either label). See CLAUDE.md §14 changelog.
+# episodes carrying either label).
 LABEL_DIVERGENT_TRANSPORT  = "divergent_transport"
 
 ALL_LABELS = [

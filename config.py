@@ -354,7 +354,7 @@ LEVEL1_PLACE_RADIUS = 0.10  # m -- PROVISIONAL, see comment above
 # TAIRO-HX Level 5 (Recovery Decision) — memo's 7-decision scheme
 # (TAIRO-HX.md Section 3, "Level 5: Recoverability"). Rule-based decision
 # logic over Levels 2-4's CHAINED PREDICTIONS (not ground truth, not Level
-# 1 — see CLAUDE.md "Level-Chaining Architecture"), not a learned
+# 1 — per the Level-Chaining Architecture decision), not a learned
 # classifier. See scripts/build_level5_labels.py.
 # ---------------------------------------------------------------------------
 LEVEL5_DECISIONS = [
@@ -396,7 +396,7 @@ STAGE_EXPERT_COMPAT = {
     "never_reached_object": {"approaching_object", "aligning_gripper"},
     # reached_but_failed_grasp -> grasp_stabilize_expert: includes
     # "transporting" deliberately -- matches the already-documented
-    # causal-proxy tradeoff (CLAUDE.md "Level 1 (Task Stage) Labeling":
+    # causal-proxy tradeoff ("Level 1 (Task Stage) Labeling" decision:
     # 30% of reached_but_failed_grasp episodes reach transporting+, kept
     # as-is, Option A) rather than re-litigating that resolved decision.
     "reached_but_failed_grasp": {"aligning_gripper", "grasping", "transporting"},

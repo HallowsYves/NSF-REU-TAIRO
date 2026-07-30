@@ -1,15 +1,15 @@
 """
 TAIRO-HX Level 5 (Recovery Decision) labeling.
 
-Decision locked in 2026-07-20 (see CLAUDE.md "Level-Chaining Architecture"
-and this session's design sign-off):
+Decision locked in 2026-07-20 ("Level-Chaining Architecture" decision and
+this session's design sign-off):
 
   - Level 5 is RULE-BASED decision logic over Levels 2-4's CHAINED
     PREDICTIONS (level2_pred_class, level3_pred_class == failure_mode,
     level4_pred_class == attack_family, from
     results/hierarchical_chain_predictions.csv), not ground-truth labels
-    and not a learned classifier. Level 1 is deliberately excluded (per
-    CLAUDE.md, Level 5 consumes Levels 2-4 only).
+    and not a learned classifier. Level 1 is deliberately excluded --
+    Level 5 consumes Levels 2-4 only.
   - Output taxonomy is the memo's 7-decision scheme (TAIRO-HX.md Section 3,
     "Level 5: Recoverability"), not Section 6's 5 recovery families —
     Section 3 is Level 5's own defined output; Section 6 is a

@@ -12,7 +12,7 @@ recovery_v3      — mean success rate, sac_her_recovery, v3  (B3)
 delta_v2_none    — v2 − no_recovery (pp improvement)
 delta_v3_none    — v3 − no_recovery (pp improvement)
 delta_v3_v2      — v3 − v2 (incremental gain of sustained window)
-c5_recovery_score — max(0, v3 − no_recovery)   [CLAUDE.md §10 formula]
+c5_recovery_score — max(0, v3 − no_recovery)   [C5 formula]
 """
 
 import os
@@ -49,7 +49,7 @@ def main() -> None:
         def _delta(a: float, b: float) -> float:
             return round(a - b, 3) if not (np.isnan(a) or np.isnan(b)) else float("nan")
 
-        # C5 recovery_score: max(0, v3 − no_recovery)  — §10 of CLAUDE.md.
+        # C5 recovery_score: max(0, v3 − no_recovery), never recovery_rate.
         c5 = max(0.0, v3 - no_rec) if not (np.isnan(v3) or np.isnan(no_rec)) else float("nan")
 
         rows.append({

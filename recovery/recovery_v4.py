@@ -2,9 +2,9 @@
 Recovery v4 Tier 1: Classifier-Conditioned Adaptive Recovery (CCAR).
 
 Design source: RECOVERY_V4.md section 2 (Tier 1). Additive to v1-v3, not a
-replacement -- see CLAUDE.md section 10 and 12. Tier 2 (trained recovery
-experts) is explicitly out of scope; do not add anything here in that
-direction.
+replacement -- scoped to the clean_2M checkpoint only. Tier 2 (trained
+recovery experts) is explicitly out of scope; do not add anything here in
+that direction.
 
 This module implements section 2.1 (trigger), the shared class-probability
 helper, section 2.2's five recovery experts and mixture function, and
@@ -98,7 +98,7 @@ class TriggerWeight:
     calibrated per trained model checkpoint (clean_2M / clean_500k /
     randomized_2M / randomized_500k), not pooled across checkpoints, since
     baseline clean-condition failure behavior differs enormously between
-    checkpoints (see calibration script and CLAUDE.md section 5).
+    checkpoints (see calibration script: scripts/calibrate_recovery_v4_trigger.py).
     """
 
     # Steepness multiplier k. Two-stage history:
@@ -139,7 +139,7 @@ def build_trusted_state(obs: Dict) -> Dict[str, np.ndarray]:
     _pnp_spatial_fields (gripper_pos=obs_vec[0:3], object_pos=obs_vec[3:6],
     object_velp=obs_vec[14:17], grip_velp=obs_vec[20:23]) -- the canonical
     decode already used by the recovery v2/v3 call site (raw obs, never
-    policy_obs; CLAUDE.md section 7/9). Not re-derived independently, so
+    policy_obs -- this is load-bearing). Not re-derived independently, so
     the two paths cannot silently drift apart.
 
     PickAndPlace only (25-dim observation). Tier 1 CCAR does not apply to
@@ -444,7 +444,7 @@ def recovery_step(policy_action: np.ndarray, obs: Dict, step_history_df,
                               past any action-level attack -- same
                               "executed_action" v2/v3 receive).
         obs:                  raw, unattacked observation dict for this step
-                              (never policy_obs -- CLAUDE.md section 7/9).
+                              (never policy_obs -- this is load-bearing).
         step_history_df:      DataFrame of step-log rows for steps
                               [0, step-1] (this step has not happened yet).
                               Empty / step==0 is the step-0 guard, mirroring

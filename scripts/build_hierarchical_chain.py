@@ -3,8 +3,8 @@ TAIRO-HX hierarchical level-chaining -- builds the actual Level 1->2->3->4
 pipeline from the four previously-standalone classifiers, using genuine
 out-of-fold (OOF) upstream predictions (evaluation/oof_chaining.py) so no
 downstream level's training features leak in-sample confidence from an
-upstream model's own fit. See CLAUDE.md's "Level-Chaining Architecture"
-decision and this session's plan for the full design rationale.
+upstream model's own fit. See the "Level-Chaining Architecture" decision
+and this session's plan for the full design rationale.
 
 Chain (immediate-predecessor conditioning only, confirmed 2026-07-20):
 

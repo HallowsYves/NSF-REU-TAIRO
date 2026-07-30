@@ -7,8 +7,8 @@ Distinct from `scripts/train_failure_classifier.py` (Phase 8, post-hoc,
 full-episode aggregate features). This module produces ONLY features that
 are computable at inference time step t using observation/action history
 from steps [0, t] — no feature here may use information from steps > t.
-See CLAUDE.md §14 and the Phase 9 prompt for the taxonomy and the hard
-no-hindsight constraint.
+See the Phase 9 prompt for the taxonomy and the hard no-hindsight
+constraint.
 
 Entry points
 ------------

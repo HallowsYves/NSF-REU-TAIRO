@@ -1,7 +1,7 @@
 """
 TAIRO-HX Level 1 (Task Stage) ground-truth labeling.
 
-Decision locked in 2026-07-20 (see CLAUDE.md "Level 1 (Task Stage) Labeling
+Decision locked in 2026-07-20 ("Level 1 (Task Stage) Labeling
 — standing decision"):
 
   - Level 1's 6-stage taxonomy (TAIRO-HX.md Section 3) is a deterministic,

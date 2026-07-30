@@ -4,7 +4,8 @@ TAIRO-HX Level 4 (Attack Family) ground-truth labeling.
 Decision locked in 2026-07-20 ("Level 4 (Attack Family) Labeling —
 standing decision"):
 
-  - Level 4's 5-class taxonomy (TAIRO-HX.md Section 3) is a deterministic
+  - Level 4's 5-class taxonomy (README.md's "TAIRO-HX Hierarchical Classifier
+    Design" section) is a deterministic
     lookup from the already-known `condition` column -- no model fitting.
     This is a ground-truth LABEL for training/evaluating a future Level 4
     classifier, not the classifier itself (which would predict attack

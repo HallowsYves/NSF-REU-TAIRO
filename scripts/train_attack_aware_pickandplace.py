@@ -1,9 +1,9 @@
 """
 Train the attack-aware SAC+HER policy on FetchPickAndPlace-v4
-(ATTACK_AWARE_TRACK.md, Step 2).
+(attack-aware policy track, Step 2).
 
-Ground truth attack-category flag (clean/action/sensor/goal, one-hot,
-ATTACK_AWARE_TRACK.md §4) is injected into obs["observation"] by
+Ground truth attack-category flag (clean/action/sensor/goal, one-hot)
+is injected into obs["observation"] by
 training.attack_aware_wrapper.AttackAwareWrapper. Separate track from the
 existing sac_her_pickandplace_clean / _randomized / _randomized_p50_2M
 models — this script never touches those paths.
@@ -12,8 +12,8 @@ Resumability (checkpoint, not a hard stop at 2,000,000 timesteps): mirrors
 the --resume pattern already used and validated in training/train_sac_her.py
 for the existing PickAndPlace models — SAC.load() + model.load_replay_buffer()
 + reset_num_timesteps=False, with the replay buffer persisted alongside the
-model via model.save_replay_buffer(). See ATTACK_AWARE_TRACK.md for the
-smoke-test confirmation that this mechanism works with this wrapper.
+model via model.save_replay_buffer(). Smoke-tested to confirm this mechanism
+works with this wrapper.
 
 Usage:
     python3 scripts/train_attack_aware_pickandplace.py \\
@@ -65,8 +65,7 @@ def main():
     )
     parser.add_argument(
         "--p-clean", type=float, default=ATTACK_AWARE_P_CLEAN,
-        help=f"Fraction of clean episodes (default {ATTACK_AWARE_P_CLEAN}, "
-             "anchored per ATTACK_AWARE_TRACK.md §4d).",
+        help=f"Fraction of clean episodes (default {ATTACK_AWARE_P_CLEAN}).",
     )
     parser.add_argument(
         "--resume", action="store_true",

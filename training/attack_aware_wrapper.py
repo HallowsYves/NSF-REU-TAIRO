@@ -1,18 +1,18 @@
 """
 Ground-truth attack-category-aware Gymnasium wrapper for TAIRO PickAndPlace
-training (ATTACK_AWARE_TRACK.md, Step 2).
+training (attack-aware policy track, Step 2).
 
 Structurally mirrors training/attack_randomization_wrapper.py (same per-episode
 sampling scheme, same apply_sensor_attack/apply_action_attack dispatch), with
-one addition: the ground-truth 3-category flag (clean/action/sensor/goal, per
-ATTACK_AWARE_TRACK.md §4a) for whichever condition is active this episode is
-one-hot encoded and appended to obs["observation"] every step.
+one addition: the ground-truth 3-category flag (clean/action/sensor/goal) for
+whichever condition is active this episode is one-hot encoded and appended to
+obs["observation"] every step.
 
 Do not conflate with the Phase 8/9 failure-mode classifier
-(evaluation/failure_mode_labeling.py) — different track, see ATTACK_AWARE_TRACK.md.
+(evaluation/failure_mode_labeling.py) — different track.
 
 Injection point (obs["observation"], not desired_goal/achieved_goal) is
-confirmed safe against HER goal relabeling — see ATTACK_AWARE_TRACK.md §4b.
+confirmed safe against HER goal relabeling.
 
 Usage:
     env = make_env(seed)
@@ -71,7 +71,7 @@ class AttackAwareWrapper(gym.Wrapper):
         self._previous_action: Optional[np.ndarray] = None
 
         # Expand the "observation" Box to carry the one-hot category flag.
-        # achieved_goal/desired_goal are untouched (ATTACK_AWARE_TRACK.md §4b).
+        # achieved_goal/desired_goal are untouched.
         base_obs_space = env.observation_space["observation"]
         flag_dim = ATTACK_CATEGORY_FLAG_DIM
         new_low = np.concatenate([base_obs_space.low, np.zeros(flag_dim)])

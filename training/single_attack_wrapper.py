@@ -1,6 +1,6 @@
 """
 Single-attack binary-flag Gymnasium wrapper for TAIRO PickAndPlace training
-(ATTACK_AWARE_TRACK.md §7, Dr. Ho email 2026-07-12).
+(attack-aware policy track, Dr. Ho email 2026-07-12).
 
 Distinct from training/attack_aware_wrapper.py's 3-category one-hot track:
 this wrapper mixes clean episodes with exactly ONE fixed attack condition
@@ -16,11 +16,11 @@ and the action_delay previous_action bookkeeping invariant exactly, so that
 attack behavior is guaranteed identical to the rest of the benchmark.
 
 Do not conflate with the Phase 8/9 failure-mode classifier
-(evaluation/failure_mode_labeling.py) — different track, see ATTACK_AWARE_TRACK.md.
+(evaluation/failure_mode_labeling.py) — different track.
 
 Injection point (obs["observation"], not desired_goal/achieved_goal) is the
 same one confirmed safe against HER goal relabeling by the 3-category track
-(ATTACK_AWARE_TRACK.md §4b) — no goal-stream condition is reachable through
+— no goal-stream condition is reachable through
 this wrapper (see config.SINGLE_ATTACK_CONDITIONS), so that risk does not
 even apply here, but the injection point is kept consistent regardless.
 
@@ -80,7 +80,7 @@ class SingleAttackWrapper(gym.Wrapper):
         self._previous_action: Optional[np.ndarray] = None
 
         # Expand the "observation" Box to carry the scalar binary flag.
-        # achieved_goal/desired_goal are untouched (ATTACK_AWARE_TRACK.md §4b).
+        # achieved_goal/desired_goal are untouched.
         base_obs_space = env.observation_space["observation"]
         flag_dim = SINGLE_ATTACK_FLAG_DIM
         new_low = np.concatenate([base_obs_space.low, np.zeros(flag_dim)])

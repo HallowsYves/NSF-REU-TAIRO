@@ -1,8 +1,9 @@
 """
 TAIRO-HX Item 1 -- hierarchical RF and hierarchical XGBoost, the two
 still-missing legs of the four-way comparison (flat RF / flat XGBoost /
-hierarchical RF / hierarchical XGBoost) described in TAIRO-HX.md Section 4
-and PROJECT_CONTEXT.md's 2026-07-20 correction.
+hierarchical RF / hierarchical XGBoost) described in README.md's
+"TAIRO-HX Hierarchical Classifier Design" section and PROJECT_CONTEXT.md's
+2026-07-20 correction.
 
 Episode-level, to be directly comparable to the canonical flat-RF baseline
 (0.9424 acc / 0.8159 macro-F1, Phase 8, `feature_matrix.csv`) and the flat

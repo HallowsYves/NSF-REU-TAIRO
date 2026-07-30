@@ -4,7 +4,8 @@ TAIRO-HX Level 1 (Task Stage) ground-truth labeling.
 Decision locked in 2026-07-20 ("Level 1 (Task Stage) Labeling
 — standing decision"):
 
-  - Level 1's 6-stage taxonomy (TAIRO-HX.md Section 3) is a deterministic,
+  - Level 1's 6-stage taxonomy (README.md's "TAIRO-HX Hierarchical
+    Classifier Design" section) is a deterministic,
     priority-ordered rule cascade over existing causal (non-hindsight)
     features -- no model fitting. Mirrors label_episode()'s elif structure
     in evaluation/failure_mode_labeling.py, but applied per-checkpoint-row

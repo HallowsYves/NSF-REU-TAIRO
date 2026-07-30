@@ -16,6 +16,7 @@ to decide when and how a robot should recover.
 - [Key Findings](#key-findings)
 - [Current Status](#current-status)
 - [Recovery Variant Comparison: HX Through HX6](#recovery-variant-comparison-hx-through-hx6)
+- [TAIRO-HX Hierarchical Classifier Design](#tairo-hx-hierarchical-classifier-design)
 - [Team and Acknowledgments](#team-and-acknowledgments)
 - [Repository Structure](#repository-structure)
   - [Regenerating the Gitignored Artifacts](#regenerating-the-gitignored-artifacts)
@@ -454,6 +455,94 @@ Benjamini-Hochberg FDR-corrected across variant comparisons.)*
 
 ---
 
+## TAIRO-HX Hierarchical Classifier Design
+
+This is the original design memo TAIRO-HX was proposed from — the taxonomy definitions and
+evaluation plan behind the recovery-variant history above. Where the actual implementation
+diverged from a proposal here, that's noted inline; see [Current Status](#current-status) and
+the Recovery Variant Comparison above for what was actually built and evaluated.
+
+**Motivation.** Recovery v4's single classifier mixes together three separate questions —
+what attack happened, what failure is the robot showing, and what recovery should be applied.
+TAIRO-HX separates these into a pipeline:
+
+```
+SAC+HER → Task Stage → Anomaly Detection → Failure Type → Attack Family → Recovery Decision
+```
+
+The same behavior can mean different things at different stages (an open gripper is normal
+during approach but may indicate failure during transport) — this hierarchy exists so the
+system can use that context.
+
+**Level 1 — Task stage.** What the robot is currently doing: approaching the object, aligning
+the gripper, grasping, transporting, placing, verifying completion. Implemented as a
+deterministic priority cascade (`scripts/build_level1_labels.py`), not a proposal — see
+"Level 1 (Task Stage) Labeling" in the codebase's standing-decisions record.
+
+**Level 2 — Normal or abnormal.** Whether the rollout looks normal, suspicious, abnormal, or
+unknown, smoothed over recent timesteps rather than judged one step at a time. Implemented,
+but scoped to the `clean_2M` checkpoint only — the other three checkpoints have no
+discriminative "normal" band to detect against.
+
+**Level 3 — Behavioral failure.** As originally proposed: a multi-label symptom set (moving
+away from goal, no progress, wrong location, failed grasp, false grasp confirmation, dropped
+object, wrong goal, missing/conflicting sensor info). **As actually implemented:** the
+existing single-label six-class failure taxonomy (`success`, `never_reached_object`,
+`reached_but_failed_grasp`, `grasped_but_dropped`, `spoofed_goal`, `divergent_transport`) was
+reused instead — multi-label was validated as feasible but deferred (~2.5–3.5 days of
+additional validation work, not worth it under the project timeline).
+
+**Level 4 — Likely attack family.** Action/actuation attack, perception/state attack, goal
+manipulation, sensor-information loss, unknown attack. Implemented close to as proposed
+(`scripts/build_level4_labels.py` for ground truth, `scripts/train_level4_classifier.py` for
+the trained classifier) — the only reshaping was moving `object_pose_spoof` into its own
+`perception_state` class rather than leaving it under sensor loss, since it fabricates a false
+value rather than degrading a channel.
+
+**Level 5 — Recoverability.** Continue SAC+HER, compensate for the problem, reconstruct the
+state, retry the task stage, restore the trusted goal, continue in reduced-speed mode, or stop
+safely. Implemented as offline rule-based decision logic over Levels 2–4's chained predictions
+(`scripts/build_level5_labels.py`) — evaluation found the `stop_safely` proxy fires on 95.6%
+of genuinely unrecoverable episodes but also 71.9% of recoverable ones, a limitation not fixable
+by threshold tuning, so Level 5 stays offline-only rather than wired into the live controller.
+The memo's third safe-stop trigger ("loss of both vision and contact") has no implementable
+analog in this simulation — no camera/perception channel independent of oracle state exists —
+so it's folded into the low-confidence proxy rather than invented.
+
+**Classifier algorithm comparison (as proposed).** Random Forest as the interpretable
+baseline, compared against XGBoost, LightGBM, CatBoost, logistic regression, an MLP, and a
+GRU/TCN temporal baseline. The most useful comparison singled out: **flat RF vs. flat XGBoost
+vs. hierarchical RF vs. hierarchical XGBoost** — to isolate whether any improvement comes from
+XGBoost, from the hierarchy, or both. Implemented in `scripts/train_hierarchical_classifier.py`
+(the two hierarchical legs) against the flat-RF and flat-XGBoost baselines — see `findings.md`
+for the checkpoint-level vs. episode-level result split.
+
+**Recovery families (as proposed, kept separate from the implementation).** The memo also
+proposed reorganizing the five specialist controllers into five broader families — execution
+correction, trusted-state reconstruction, task retry, goal restoration/re-planning, and safe
+degradation/stop. This is a different grouping from the five experts actually implemented in
+`recovery/recovery_v4.py` (`approach_expert`, `grasp_stabilize_expert`, `regrasp_expert`,
+`relocalization_expert`, `transport_expert`) and was deliberately kept as a separate, unbuilt
+proposal rather than merged into the controller.
+
+**Key causal features proposed.** Distance to object/goal, progress over 5/10/20-step
+windows, end-effector speed and direction, action variance, commanded-vs-executed action
+difference, object–gripper distance, whether the object tracks the gripper, gripper
+width/contact, goal changes, missing-sensor indicators, and prior recovery-attempt count —
+train/test splits by episode or seed, never by individual timestep (to avoid leaking
+near-identical neighboring observations across the split).
+
+**Evaluation plan proposed.** Classifier: macro-F1, per-class precision/recall, confusion
+matrix, false alarms on clean episodes, detection delay, calibration, inference time.
+Recovery: task-success rate, improvement over no recovery, clean-performance loss, safe-stop
+rate, unsafe-completion rate, number of interventions, recovery time, completion-time
+overhead. Proposed ablation ladder: no recovery → recovery with predicted labels → recovery
+with true labels → recovery with true labels + simulator state → recovery with predicted
+labels + deployable state estimates — to separate whether the bottleneck is the classifier,
+the state estimator, or the recovery controller.
+
+---
+
 ## Team and Acknowledgments
 
 Yves Velasquez Vega (California State University, Fullerton), Jachin Choi (Case Western
@@ -486,23 +575,29 @@ NSF-REU-TAIRO/
 │                                #   diagnostic/calibration scripts —
 │                                #   build_final_hx_comparison.py / build_final_hx_figures.py —
 │                                #   the final mentor-requested 4-arm comparison
-├── training/                    # SAC+HER training, attack-aware and single-attack wrappers
-├── results/                     # Local only — gitignored (see below)
-│   ├── models/                  # Trained checkpoints + replay buffers
-│   ├── data_seedfix/            # Canonical seed-fixed episode results (authoritative numbers)
-│   ├── data_recovery_v4/        # Recovery v4 Phase 6 evaluation (episode_results committed)
-│   ├── data_recovery_v4_dense/  # Dense-sweep results (episode_results committed)
-│   ├── data_recovery_v4_hx*/    # v4_hx..v4_hx6 evaluation (episode_results committed)
-│   ├── data_recovery_v4_v2v3_backfill/  # v2/v3 seeds-5-14 backfill (episode_results committed)
-│   ├── data_recovery_v4_power_check*/   # seeds-5-14 backfill for sac_her/v4/v4_hx/v4_hx2
-│   ├── classifier/              # Original pre-fix RF classifier (historical)
-│   ├── classifier_seedfix/      # Seed-fixed RF + causal + online + v4 calibration
-│   ├── classifier_seedfix_dense/# Dense-feature variant (1.4 GB, local only)
-│   ├── classifier_level4/       # Level 4 (attack-family) classifier
-│   ├── figures/                 # Diagnostic and publication plots, incl.
-│   │                            #   figures/final_hx_comparison/ (final 4-arm figures)
-│   └── archive/                 # Pre-fix data (README committed; CSVs gitignored)
-└── TAIRO-HX.md                  # The five-level hierarchical failure-diagnosis stack
+└── training/                    # SAC+HER training, attack-aware and single-attack wrappers
+
+results/                         # Local only — gitignored (see below)
+├── models/                      # Trained checkpoints + replay buffers
+├── data_seedfix/                # Canonical seed-fixed episode results (authoritative numbers)
+├── data_recovery_v4/            # Recovery v4 Phase 6 evaluation (episode_results committed)
+├── data_recovery_v4_dense/      # Dense-sweep results (episode_results committed)
+├── data_recovery_v4_hx*/        # v4_hx..v4_hx6 evaluation (episode_results committed)
+├── data_recovery_v4_v2v3_backfill/  # v2/v3 seeds-5-14 backfill (episode_results committed)
+├── data_recovery_v4_power_check*/   # seeds-5-14 backfill for sac_her/v4/v4_hx/v4_hx2
+├── classifier/                  # Original pre-fix RF classifier (historical)
+├── classifier_seedfix/          # Seed-fixed RF + causal + online + v4 calibration
+├── classifier_seedfix_dense/    # Dense-feature variant (1.4 GB, local only)
+├── classifier_level1/           # Level 1 (task-stage) classifier
+├── classifier_level4/           # Level 4 (attack-family) classifier
+├── classifier_causal_baseline/  # Causal-classifier baseline metrics (Phase 9B)
+├── classifier_hierarchical/     # Hierarchical RF/XGBoost eval (Item 1 four-way comparison)
+├── classifier_flat_xgboost/     # Flat XGBoost baseline (fully gitignored, no committed CSVs)
+├── videos/                      # record_videos.py output (fully gitignored)
+├── figures/                     # Diagnostic and publication plots, incl.
+│                                #   figures/final_hx_comparison/ (final 4-arm figures)
+└── archive/                     # Pre-fix data — only 5 train-log .txt files committed;
+                                 #   the CSVs alongside them are gitignored
 ```
 
 > A number of other project-tracking `.md` docs (design history, phase-by-phase findings,

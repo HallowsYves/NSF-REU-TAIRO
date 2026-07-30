@@ -10,9 +10,10 @@ this session's design sign-off):
     results/hierarchical_chain_predictions.csv), not ground-truth labels
     and not a learned classifier. Level 1 is deliberately excluded --
     Level 5 consumes Levels 2-4 only.
-  - Output taxonomy is the memo's 7-decision scheme (TAIRO-HX.md Section 3,
-    "Level 5: Recoverability"), not Section 6's 5 recovery families —
-    Section 3 is Level 5's own defined output; Section 6 is a
+  - Output taxonomy is the memo's 7-decision scheme (README.md's
+    "TAIRO-HX Hierarchical Classifier Design" section, "Level 5 —
+    Recoverability"), not that same section's "Recovery families" list —
+    the former is Level 5's own defined output; the latter is a
     controller-side reorganization of recovery_v4.py's specialist rules,
     which this session keeps deliberately separate (sign-off: Level 5 is a
     new analysis artifact, not wired into recovery_v4.py or

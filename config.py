@@ -130,7 +130,7 @@ MODEL_PATH_PICKANDPLACE_RANDOMIZED = f"{MODELS_DIR}/sac_her_pickandplace_randomi
 MODEL_PATH_PICKANDPLACE_2M            = f"{MODELS_DIR}/sac_her_pickandplace_clean_2M"
 MODEL_PATH_PICKANDPLACE_RANDOMIZED_2M = f"{MODELS_DIR}/sac_her_pickandplace_randomized_2M"
 
-# Attack-aware policy model path (ATTACK_AWARE_TRACK.md) — new track, does
+# Attack-aware policy model path — separate track, does
 # not overwrite or replace the clean/randomized models above.
 MODEL_PATH_PICKANDPLACE_ATTACKAWARE = f"{MODELS_DIR}/sac_her_pickandplace_attackaware_3cat"
 
@@ -244,10 +244,9 @@ SPOOFED_GOAL_TRUE_MIN      = 0.05    # m — min dist_to_true_goal for "not at t
 WRONG_DIR_WINDOW           = 50      # steps
 
 # ---------------------------------------------------------------------------
-# Attack-aware policy track (ATTACK_AWARE_TRACK.md, Step 1 design decisions).
+# Attack-aware policy track (Step 1 design decisions).
 # Separate from the Phase 8/9 failure-mode classifier constants above — do
-# not conflate. Full reasoning for each value lives in ATTACK_AWARE_TRACK.md
-# §4; do not duplicate that reasoning here.
+# not conflate.
 # ---------------------------------------------------------------------------
 
 # 3-category scheme per Dr. Ho's proposal (§4a): every one of the 11
@@ -299,8 +298,9 @@ CAUSAL_CHECKPOINT_STRIDE  = 10        # steps between inference checkpoints
 
 # ---------------------------------------------------------------------------
 # TAIRO-HX Level 4 (Attack Family) labeling — memo's 5-class scheme
-# (TAIRO-HX.md Section 3). Separate from ATTACK_CATEGORY_MAP above, which is
-# the attack-aware RL track's 4-class scheme (ATTACK_AWARE_TRACK.md) — do
+# (see README.md's "TAIRO-HX Hierarchical Classifier Design" section).
+# Separate from ATTACK_CATEGORY_MAP above, which is
+# the attack-aware RL track's 4-class scheme — do
 # not conflate or reuse. This mapping reshapes category boundaries (notably
 # object_pose_spoof moves from "sensor" to its own perception/state class)
 # specifically for the TAIRO-HX classifier pipeline, not RL-policy
@@ -334,7 +334,8 @@ ATTACK_FAMILY_MAP = {
 
 # ---------------------------------------------------------------------------
 # TAIRO-HX Level 1 (Task Stage) labeling — memo's 6-stage ordered scheme
-# (TAIRO-HX.md Section 3). Deterministic, causal-only cascade — see
+# (see README.md's "TAIRO-HX Hierarchical Classifier Design" section).
+# Deterministic, causal-only cascade — see
 # scripts/build_level1_labels.py. Approach->Align reuses REACH_THRESHOLD
 # (no new constant). Transport->Place is a NEW, PROVISIONAL boundary with no
 # prior precedent in this repo -- calibrate against the clean-episode
@@ -352,7 +353,8 @@ LEVEL1_PLACE_RADIUS = 0.10  # m -- PROVISIONAL, see comment above
 
 # ---------------------------------------------------------------------------
 # TAIRO-HX Level 5 (Recovery Decision) — memo's 7-decision scheme
-# (TAIRO-HX.md Section 3, "Level 5: Recoverability"). Rule-based decision
+# (see README.md's "TAIRO-HX Hierarchical Classifier Design" section,
+# "Level 5 — Recoverability"). Rule-based decision
 # logic over Levels 2-4's CHAINED PREDICTIONS (not ground truth, not Level
 # 1 — per the Level-Chaining Architecture decision), not a learned
 # classifier. See scripts/build_level5_labels.py.
@@ -367,8 +369,8 @@ LEVEL5_DECISIONS = [
     "stop_safely",
 ]
 # Both PROVISIONAL, uncalibrated — proxies for the memo's safe-stop triggers
-# (TAIRO-HX.md's untitled section between "Classifier algorithms" and
-# "Improved recovery families"). "Loss of both vision and contact" has no
+# (see README.md's "TAIRO-HX Hierarchical Classifier Design" section,
+# Level 5). "Loss of both vision and contact" has no
 # implementable analog in this sim (no camera/perception channel exists —
 # see RECOVERY_V4.md section 2.5's oracle-privilege discussion); folded into
 # the low-confidence proxy below rather than invented.

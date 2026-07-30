@@ -2,14 +2,13 @@
 TAIRO-HX Item 1 -- hierarchical RF and hierarchical XGBoost, the two
 still-missing legs of the four-way comparison (flat RF / flat XGBoost /
 hierarchical RF / hierarchical XGBoost) described in README.md's
-"TAIRO-HX Hierarchical Classifier Design" section and PROJECT_CONTEXT.md's
-2026-07-20 correction.
+"TAIRO-HX Hierarchical Classifier Design" section.
 
 Episode-level, to be directly comparable to the canonical flat-RF baseline
 (0.9424 acc / 0.8159 macro-F1, Phase 8, `feature_matrix.csv`) and the flat
 XGBoost baseline (0.9485 / 0.8240, `scripts/train_flat_xgboost_classifier.py`)
--- NOT checkpoint-pooled, which PROJECT_CONTEXT.md explicitly flags as
-reference material only, not a comparison-point substitute for Item 1.
+-- NOT checkpoint-pooled, which is reference material only, not a
+comparison-point substitute for Item 1.
 
 Episode-level representation (confirmed 2026-07-20): each episode's final
 checkpoint (t=149) row's base causal features, PLUS the out-of-fold chained

@@ -143,7 +143,7 @@ def _row_features(ep: pd.DataFrame, t: int) -> dict:
 
     # ── grasp/contact causal proxy (running streak, no forward lift check) ──
     # Decision (2026-07-18, TAIRO-HX Phase 0.5 Phase B): keep this proxy exactly
-    # as-is — Option A of reported_grasp_contact_options.md. The lack of a
+    # as-is — Option A, per findings.md's "Grasp detection" section. The lack of a
     # forward lift check (see failure_mode_labeling._detect_grasp for the
     # hindsight version, which does check lift) is intentional, not an
     # oversight: a lift check needs steps after the kinematic window closes,
@@ -157,7 +157,7 @@ def _row_features(ep: pd.DataFrame, t: int) -> dict:
     # query cadence (1.20% disagreement), not at the sparse cadence currently
     # in production (4.88%, no better than doing nothing) — revisit only if/
     # when classifier cadence moves from sparse to dense (see RECOVERY_V4.md
-    # Phase C). Full analysis: reported_grasp_contact_options.md.
+    # Phase C). Full analysis: findings.md's "Grasp detection" section.
     streak_series = _grasp_streak_series(dto, obj_v, grp_v)
     contact_streak_now = int(streak_series[-1])
     grasp_kinematic_ever_sofar = float(np.any(streak_series >= GRASP_WINDOW))

@@ -21,7 +21,8 @@ statistical power (n=450, seeds 0-14, all 11 conditions):
                                                   showed it matches v4_hx2 exactly everywhere
                                                   measured, including grip_state_falsification,
                                                   with zero new regression risk -- see
-                                                  RECOVERY_V4.md / FINAL_APPROACH.md)
+                                                  RECOVERY_V4.md / README.md's "Recovery
+                                                  Variant Comparison" section)
 
 Reports the 8 mentor-requested metrics per (method, condition):
     1. task-success rate                -- episode_results['success']

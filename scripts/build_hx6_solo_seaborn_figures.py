@@ -126,8 +126,8 @@ def build_fig1(success_df: pd.DataFrame) -> None:
     sns.despine(ax=ax, left=False, bottom=True)
 
     # No in-image title/caption -- poster space is tight and this context
-    # (n=450/condition, seeds 0-14, clean_2M checkpoint) lives in the
-    # POSTER_DRAFT.md caption instead, so bbox_inches="tight" crops right
+    # (n=450/condition, seeds 0-14, clean_2M checkpoint) is meant to live in
+    # an external caption instead, so bbox_inches="tight" crops right
     # to the plot instead of leaving room for 3 lines of header text.
     _savefig(fig, "fig1_success_by_condition.png")
 
@@ -202,8 +202,8 @@ def build_fig2(latency_df: pd.DataFrame) -> None:
     ax.legend(title="", loc="upper left", bbox_to_anchor=(1.01, 1.0), frameon=False, fontsize=9)
 
     # No in-image title -- see the note in build_fig1; this figure's caption
-    # (mean steps, triggering episodes only, 150-step ramp cutoff) lives in
-    # POSTER_DRAFT.md instead.
+    # (mean steps, triggering episodes only, 150-step ramp cutoff) is meant
+    # to live in an external caption instead.
     _savefig(fig, "fig2_recovery_latency.png")
 
 
@@ -339,8 +339,8 @@ def build_fig3_table(out: pd.DataFrame) -> None:
             cell.get_text().set_ha("left")
 
     # No in-image title -- see the note in build_fig1; this table's context
-    # (n=450/condition, seeds 0-14, clean_2M checkpoint) lives in
-    # POSTER_DRAFT.md's caption instead. pad_inches trimmed to the minimum
+    # (n=450/condition, seeds 0-14, clean_2M checkpoint) is meant to live in
+    # an external caption instead. pad_inches trimmed to the minimum
     # that still keeps the header fill from clipping at the figure edge.
     _savefig(fig, "fig3_evaluation_table.png", pad_inches=0.03)
 

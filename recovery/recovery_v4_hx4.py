@@ -4,8 +4,7 @@ wiring, layered on top of v4-HX2's Level 1 + Level 4 mixture.
 
 Motivation (2026-07-22). Investigating why v4-HX/v4-HX2 underperform the much
 simpler recovery_v3 on goal_spoof_immediate/goal_spoof_midep (v3: +2.9pp/+4.9pp
-over sac_her at n=150; v4-HX2 essentially flat at n=450 -- see
-PROJECT_CONTEXT.md's 2026-07-22 Next Steps item 2) surfaced a mechanistic
+over sac_her at n=150; v4-HX2 essentially flat at n=450) surfaced a mechanistic
 mismatch in recovery_v4.py's EXPERTS mapping: class_probs["spoofed_goal"]
 drives relocalization_expert, but relocalization_expert only re-estimates the
 OBJECT's own position (a median-filtered PD controller that never reads

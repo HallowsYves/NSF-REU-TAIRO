@@ -41,7 +41,8 @@ the new adopted final controller after its full n=450 evaluation showed it
 behaves identically to v4-HX2 everywhere measured (including an EXACT,
 zero-delta match on grip_state_falsification -- the Level-4 gate correctly
 never fires there) with zero new regression risk, unlike hx5's global
-speed-up. See RECOVERY_V4.md and FINAL_APPROACH.md for the full comparison.
+speed-up. See RECOVERY_V4.md and README.md's "Recovery Variant Comparison:
+HX Through HX6" section for the full comparison.
 """
 
 import os

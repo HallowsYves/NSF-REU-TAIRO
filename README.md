@@ -15,7 +15,6 @@ to decide when and how a robot should recover.
 - [Approach](#approach)
 - [Key Findings](#key-findings)
 - [Current Status](#current-status)
-- [Documentation Map](#documentation-map)
 - [Team and Acknowledgments](#team-and-acknowledgments)
 - [Repository Structure](#repository-structure)
 - [Environment Setup](#environment-setup)
